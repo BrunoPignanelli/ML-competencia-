@@ -21,15 +21,20 @@ def render_landing_html() -> str:
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Neural Decode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 /* ── Reset ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   background: #04050f;
   color: #fff;
   overflow-x: hidden;
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ── Sections — height set by JS ────────────────────────────────────── */
@@ -105,8 +110,9 @@ html, body {
 }
 .hero-eyebrow {
   display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 5px;
   color: #5B86E5;
   text-transform: uppercase;
@@ -115,10 +121,11 @@ html, body {
   animation: fadeUp 0.8s 0.3s ease forwards;
 }
 .hero-title {
-  font-size: clamp(48px, 7vw, 88px);
-  font-weight: 900;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: clamp(52px, 7vw, 96px);
+  font-weight: 700;
   line-height: 1.0;
-  letter-spacing: -2px;
+  letter-spacing: -3px;
   margin-bottom: 10px;
   opacity: 0;
   animation: fadeUp 0.9s 0.5s ease forwards;
@@ -133,10 +140,12 @@ html, body {
   animation: growRule 1s 1.2s ease forwards;
 }
 .hero-sub {
-  font-size: clamp(15px, 2vw, 19px);
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(15px, 2vw, 18px);
+  font-weight: 400;
   color: #9ba8c9;
-  line-height: 1.7;
-  max-width: 520px;
+  line-height: 1.75;
+  max-width: 480px;
   margin: 0 auto 36px;
   opacity: 0;
   animation: fadeUp 0.9s 0.72s ease forwards;
@@ -157,9 +166,12 @@ html, body {
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 100px;
   padding: 8px 18px;
-  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 400;
   color: #ccd6f6;
   backdrop-filter: blur(8px);
+  letter-spacing: 0.3px;
 }
 .pill-dot {
   width: 7px; height: 7px;
@@ -186,6 +198,7 @@ html, body {
   animation: fadeUp 1s 1.5s ease forwards;
 }
 .scroll-label {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 9px;
   letter-spacing: 3px;
   text-transform: uppercase;
@@ -223,8 +236,9 @@ html, body {
   pointer-events: none;
 }
 .section-label {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 5px;
   text-transform: uppercase;
   color: #5B86E5;
@@ -232,11 +246,12 @@ html, body {
   text-align: center;
 }
 .section-title {
-  font-size: clamp(26px, 4vw, 42px);
-  font-weight: 800;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 700;
   text-align: center;
   margin-bottom: 64px;
-  letter-spacing: -0.8px;
+  letter-spacing: -1px;
 }
 .cards {
   display: flex;
@@ -284,13 +299,15 @@ html, body {
 }
 .card-icon svg { width: 22px; height: 22px; }
 .card-title {
-  font-size: 18px;
-  font-weight: 700;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
   margin-bottom: 12px;
   color: #e6edf3;
+  letter-spacing: -0.2px;
 }
-.card-body { font-size: 14px; color: #8892b0; line-height: 1.75; }
-.card-body strong { color: #a0aec0; }
+.card-body { font-size: 14px; font-weight: 400; color: #8892b0; line-height: 1.8; }
+.card-body strong { color: #a0aec0; font-weight: 500; }
 
 /* ════════════════════════════════════════════════════════════════════
    HOW IT WORKS
@@ -342,8 +359,8 @@ html, body {
   border-color: rgba(46,204,113,0.4);
   box-shadow: 0 0 24px rgba(46,204,113,0.15);
 }
-.step-heading { font-size: 15px; font-weight: 700; color: #ccd6f6; margin-bottom: 9px; }
-.step-desc { font-size: 13px; color: #8892b0; line-height: 1.65; }
+.step-heading { font-family: 'Space Grotesk', 'Inter', sans-serif; font-size: 15px; font-weight: 600; color: #ccd6f6; margin-bottom: 9px; letter-spacing: -0.2px; }
+.step-desc { font-size: 13px; font-weight: 400; color: #8892b0; line-height: 1.7; }
 .connector {
   flex: 0 0 40px;
   height: 2px;
@@ -392,8 +409,9 @@ html, body {
   50%      { opacity:1;   transform:translate(-50%,-60%) scale(1.15); }
 }
 .cta-label {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 5px;
   text-transform: uppercase;
   color: #2ECC71;
@@ -401,20 +419,23 @@ html, body {
   position: relative; z-index: 1;
 }
 .cta-title {
-  font-size: clamp(30px, 5vw, 54px);
-  font-weight: 900;
-  letter-spacing: -1.5px;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700;
+  letter-spacing: -2px;
   margin-bottom: 16px;
   line-height: 1.1;
   position: relative; z-index: 1;
 }
 .cta-sub {
+  font-family: 'Inter', sans-serif;
   font-size: 15px;
+  font-weight: 400;
   color: #8892b0;
   margin-bottom: 48px;
   max-width: 400px;
   margin-left: auto; margin-right: auto;
-  line-height: 1.7;
+  line-height: 1.75;
   position: relative; z-index: 1;
 }
 .enter-btn {
@@ -427,9 +448,10 @@ html, body {
   border: none;
   background: linear-gradient(135deg, #2ECC71 0%, #5B86E5 100%);
   color: #fff;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
   cursor: pointer;
   box-shadow: 0 0 0 0 rgba(46,204,113,0.4);
   transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
@@ -460,8 +482,11 @@ html, body {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 400;
   color: #3a4466;
+  letter-spacing: 0.3px;
 }
 .stack-dot {
   width: 6px; height: 6px; border-radius: 50%;

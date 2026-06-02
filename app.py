@@ -180,15 +180,25 @@ html, body, [data-testid="stAppViewContainer"],
 h1, h2, h3, h4 { color: #e6edf3 !important; }
 p, label, .stCaption, .stMarkdown, span { color: #c9d1d9; }
 
-/* ── Block container + columns ─────────────────────────────────── */
+/* ── Block container + columns + all wrappers ──────────────────── */
 .block-container { background: #0d1117 !important; }
+.stApp, .stApp > div { background-color: #0d1117 !important; }
 [data-testid="column"],
 [data-testid="stVerticalBlock"],
-[data-testid="stHorizontalBlock"] {
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stHorizontalBlock"],
+[data-testid="stMainBlockContainer"] {
     background: #0d1117 !important;
 }
-/* Catch any remaining white iframe backgrounds from canvas widget */
-.stCustomComponentV1 iframe { background: transparent !important; }
+/* Canvas component iframe wrapper — clips white iframe body */
+[data-testid="stCustomComponentV1"] {
+    background: #1a1a1a !important;
+    border-radius: 4px;
+    overflow: hidden;
+}
+[data-testid="stCustomComponentV1"] iframe {
+    background: #1a1a1a !important;
+}
 
 /* ── Tabs ──────────────────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
@@ -589,40 +599,35 @@ with tab_draw:
     # ── FASE 1: dibujo + botón Predecir ──────────────────────────────────────
     if not st.session_state[f"show_result{_sfx}"]:
 
-        col_left, col_right = st.columns([3, 2], gap="large")
+        st.markdown(_draw_prompt)
+        st.caption(_draw_caption)
 
-        with col_left:
-            st.markdown(_draw_prompt)
-            st.caption(_draw_caption)
-
+        # Canvas in a narrow left column so the widget iframe matches the canvas
+        # width exactly — prevents the blank white area to the right of the canvas.
+        canvas_col, spacer_col = st.columns([2, 3])
+        with canvas_col:
             canvas_result = st_canvas(
                 fill_color="rgba(0,0,0,0)",
                 stroke_width=20,
                 stroke_color="#FFFFFF",
                 background_color="#1a1a1a",
-                width=320,
-                height=320,
+                width=280,
+                height=280,
                 drawing_mode="freedraw",
                 update_streamlit=True,
                 key=f"canvas_{_mode}_{st.session_state[f'attempt{_sfx}']}",
             )
 
-        with col_right:
-            st.markdown("### Cuando estes listo")
-            st.caption("Asegurate de que el trazo sea grande y centrado.")
+        img_data    = canvas_result.image_data if canvas_result is not None else None
+        has_drawing = img_data is not None and img_data[:, :, :3].sum() > 0
 
-            img_data    = canvas_result.image_data if canvas_result is not None else None
-            has_drawing = img_data is not None and img_data[:, :, :3].sum() > 0
-
-            st.markdown("<div style='height:160px'></div>", unsafe_allow_html=True)
-
-            predict_btn = st.button(
-                "Predecir",
-                type="primary",
-                use_container_width=True,
-                disabled=not has_drawing,
-                help=_help_hint if not has_drawing else "Ejecutar prediccion",
-            )
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        predict_btn = st.button(
+            "Predecir",
+            type="primary",
+            disabled=not has_drawing,
+            help=_help_hint if not has_drawing else "Ejecutar prediccion",
+        )
 
         # ── Lógica de predicción ────────────────────────────────────────────
         if predict_btn and has_drawing:
