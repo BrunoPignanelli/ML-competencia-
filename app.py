@@ -17,6 +17,7 @@ from PIL import Image
 from data.loader import EMNIST_MEAN, EMNIST_STD, load_emnist_letters, load_mnist
 from model.neural_net import NeuralNet
 from training.trainer import Trainer
+from visualization.landing_html import render_landing_html
 from visualization.network_html import render_network_html
 from visualization.plots import (
     plot_accuracy_curve,
@@ -48,7 +49,7 @@ def _sidebar_preview_svg(hidden_layers: list, output_size: int = 10) -> str:
     W, H        = 260, 140
     col_w       = W / (N + 1)
     NR          = 5          # node radius
-    colors      = ["#A8C4E0"] + ["#9BA8B5"] * len(hidden_layers) + ["#E88080"]
+    colors      = ["#58a6ff"] + ["#8b949e"] * len(hidden_layers) + ["#3fb950"]
 
     def node_ys(n: int):
         if n == 1:
@@ -102,28 +103,209 @@ def _sidebar_preview_svg(hidden_layers: list, output_size: int = 10) -> str:
 # ── Página ───────────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="MNIST — Red Neuronal",
-    page_icon="🧠",
+    page_title="Neural Decode — ML Interactivo",
+    page_icon="N",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# CSS mínimo: agranda el número predicho y pule el canvas
+# ── Landing page gate — show cover before the app ─────────────────────────────
+if st.query_params.get("app"):
+    st.session_state["entered"] = True
+
+if not st.session_state.get("entered", False):
+    # Hide every piece of Streamlit chrome and make the iframe fill the viewport.
+    # The iframe wrapper is made position:fixed so it truly covers the full window
+    # regardless of Streamlit's internal padding/margins.
+    st.markdown("""
+    <style>
+    /* Hide chrome */
+    #MainMenu, header, footer,
+    [data-testid="stSidebar"],
+    [data-testid="stStatusWidget"],
+    [data-testid="stToolbar"] { display: none !important; }
+
+    /* Remove all padding from the Streamlit page shell */
+    html, body { overflow: hidden !important; background: #04050f !important; }
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    .main,
+    .main > div,
+    .block-container {
+        padding: 0 !important;
+        margin:  0 !important;
+        max-width: 100% !important;
+        background: #04050f !important;
+    }
+
+    /* Make the component iframe wrapper cover the entire viewport */
+    [data-testid="stCustomComponentV1"] {
+        position: fixed !important;
+        top: 0 !important; left: 0 !important;
+        width:  100vw !important;
+        height: 100vh !important;
+        z-index: 9999 !important;
+        padding: 0 !important;
+        margin:  0 !important;
+    }
+    [data-testid="stCustomComponentV1"] iframe {
+        width:  100% !important;
+        height: 100% !important;
+        border: none !important;
+        display: block !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    # height here doesn't matter visually (overridden by CSS above) but must be > 0
+    components.html(render_landing_html(), height=900, scrolling=True)
+    st.stop()
+
+# ── Professional dark theme ──────────────────────────────────────────────────
 st.markdown("""
 <style>
+/* ── Global dark surface ────────────────────────────────────────── */
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stMain"], .main {
+    background: #0d1117 !important;
+    color: #c9d1d9 !important;
+}
+[data-testid="stSidebar"] {
+    background: #161b22 !important;
+    border-right: 1px solid #21262d !important;
+    min-width: 320px !important;
+}
+[data-testid="stSidebar"] > div:first-child { background: #161b22 !important; }
+
+/* ── Typography ────────────────────────────────────────────────── */
+h1, h2, h3, h4 { color: #e6edf3 !important; }
+p, label, .stCaption, .stMarkdown, span { color: #c9d1d9; }
+
+/* ── Block container + columns ─────────────────────────────────── */
+.block-container { background: #0d1117 !important; }
+[data-testid="column"],
+[data-testid="stVerticalBlock"],
+[data-testid="stHorizontalBlock"] {
+    background: #0d1117 !important;
+}
+/* Catch any remaining white iframe backgrounds from canvas widget */
+.stCustomComponentV1 iframe { background: transparent !important; }
+
+/* ── Tabs ──────────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    background: #161b22 !important;
+    border-bottom: 1px solid #21262d !important;
+    border-radius: 8px 8px 0 0;
+    gap: 0 !important;
+}
+.stTabs [data-baseweb="tab"] {
+    color: #8b949e !important;
+    font-weight: 500;
+    padding: 10px 20px !important;
+}
+.stTabs [aria-selected="true"] {
+    color: #58a6ff !important;
+    border-bottom: 2px solid #58a6ff !important;
+    background: rgba(88,166,255,0.06) !important;
+}
+.stTabs [data-baseweb="tab-panel"] {
+    background: #0d1117 !important;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────── */
+.stButton > button {
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    border: 1px solid #30363d !important;
+    background: #21262d !important;
+    color: #c9d1d9 !important;
+    transition: background 0.15s, border-color 0.15s;
+}
+.stButton > button:hover {
+    background: #30363d !important;
+    border-color: #8b949e !important;
+}
+.stButton > button[kind="primary"],
+button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #238636 0%, #2ea043 100%) !important;
+    border-color: #2ea043 !important;
+    color: #fff !important;
+}
+.stButton > button[kind="primary"]:hover,
+button[data-testid="stBaseButton-primary"]:hover {
+    background: linear-gradient(135deg, #2ea043 0%, #3fb950 100%) !important;
+}
+
+/* ── Sliders ───────────────────────────────────────────────────── */
+[data-testid="stSlider"] {
+    color: #c9d1d9 !important;
+}
+
+/* ── Expanders ─────────────────────────────────────────────────── */
+details[data-testid="stExpander"] {
+    background: #161b22 !important;
+    border: 1px solid #21262d !important;
+    border-radius: 8px !important;
+}
+details summary span { color: #c9d1d9 !important; }
+
+/* ── Metrics ───────────────────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: #161b22 !important;
+    padding: 14px 16px !important;
+    border-radius: 8px !important;
+    border: 1px solid #21262d !important;
+}
+[data-testid="stMetricValue"] { color: #e6edf3 !important; }
+[data-testid="stMetricLabel"] { color: #8b949e !important; }
+
+/* ── Selectbox / Radio ─────────────────────────────────────────── */
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background: #21262d !important;
+    border-color: #30363d !important;
+    color: #c9d1d9 !important;
+}
+[data-testid="stRadio"] label { color: #c9d1d9 !important; }
+
+/* ── Dividers ──────────────────────────────────────────────────── */
+hr { border-color: #21262d !important; }
+
+/* ── Info / warning boxes ──────────────────────────────────────── */
+[data-testid="stAlert"] {
+    background: #161b22 !important;
+    border: 1px solid #30363d !important;
+    color: #c9d1d9 !important;
+}
+
+/* ── Custom classes ────────────────────────────────────────────── */
 .big-digit {
-    font-size: 120px;
-    font-weight: 900;
+    font-size: 110px;
+    font-weight: 800;
     text-align: center;
     line-height: 1;
     padding: 10px 0;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
-.correct   { color: #2ECC71; }
-.uncertain { color: #F39C12; }
-.wrong     { color: #E74C3C; }
-.status-ok   { background:#d4edda; color:#155724; padding:8px 14px; border-radius:8px; font-weight:600; }
-.status-warn { background:#fff3cd; color:#856404; padding:8px 14px; border-radius:8px; font-weight:600; }
-section[data-testid="stSidebar"] { min-width: 320px !important; }
+.correct   { color: #3fb950; }
+.uncertain { color: #d29922; }
+.wrong     { color: #f85149; }
+.status-ok {
+    background: rgba(63,185,80,0.12);
+    color: #3fb950;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    border: 1px solid rgba(63,185,80,0.25);
+    font-size: 14px;
+}
+.status-warn {
+    background: rgba(210,153,34,0.12);
+    color: #d29922;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    border: 1px solid rgba(210,153,34,0.25);
+    font-size: 14px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,21 +367,21 @@ _init()
 # ════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
-    st.title("🧠 Configuración")
-    st.caption("Ajustá los parámetros y entrenà el modelo.")
+    st.title("Configuracion")
+    st.caption("Ajusta los parametros y entrena el modelo.")
 
     # ── Selector de módulo ────────────────────────────────────────────────────
     st.radio(
         "Módulo",
         options=["digits", "letters"],
-        format_func=lambda m: "🔢 Dígitos (MNIST)" if m == "digits" else "🔡 Letras (EMNIST)",
+        format_func=lambda m: "Digitos (MNIST)" if m == "digits" else "Letras (EMNIST)",
         horizontal=True,
         key="mode",
     )
     mode = st.session_state["mode"]
 
     # ── Hiperparámetros ───────────────────────────────────────────────────────
-    with st.expander("⚙️ Hiperparámetros", expanded=True):
+    with st.expander("Hiperparametros", expanded=True):
         n_hidden = st.slider("Capas ocultas", 1, 4, 2)
 
         hidden_layers = []
@@ -243,7 +425,7 @@ with st.sidebar:
         and existing_net.hidden_layers_config == hidden_layers
     )
 
-    btn_label = f"🔁 Seguir entrenando ({RETRAIN_EPOCHS} épocas)" if same_arch else "🚀 Entrenar modelo"
+    btn_label = f"Seguir entrenando ({RETRAIN_EPOCHS} epocas)" if same_arch else "Entrenar modelo"
     train_btn = st.button(btn_label, type="primary", use_container_width=True)
 
     # ── Estado del modelo ─────────────────────────────────────────────────────
@@ -251,12 +433,12 @@ with st.sidebar:
         acc = st.session_state[f"test_acc{sfx}"]
         color = "#2ECC71" if acc >= 95 else "#F39C12"
         st.markdown(
-            f"<div class='status-ok'>✅ Modelo entrenado &nbsp;|&nbsp; "
+            f"<div class='status-ok'>Modelo entrenado &nbsp;|&nbsp; "
             f"<span style='color:{color}'><b>{acc:.1f}%</b></span> accuracy en test</div>",
             unsafe_allow_html=True,
         )
     else:
-        st.markdown("<div class='status-warn'>⏳ Modelo no entrenado aún</div>",
+        st.markdown("<div class='status-warn'>Modelo no entrenado</div>",
                     unsafe_allow_html=True)
 
     # ── Lógica de entrenamiento ───────────────────────────────────────────────
@@ -330,11 +512,17 @@ with st.sidebar:
         st.session_state[f"last_saliency{sfx}"]         = None
         st.session_state[f"tsne_coords{sfx}"]           = None
         st.session_state[f"tsne_labels{sfx}"]           = None
-        prog.progress(1.0, text=f"✅ Listo — {test_acc:.1f}% en test")
+        prog.progress(1.0, text=f"Completado — {test_acc:.1f}% en test")
         st.rerun()
 
     # ── Consejos rápidos ──────────────────────────────────────────────────────
-    with st.expander("💡 Guía rápida"):
+    st.markdown("---")
+    if st.button("← Volver al inicio", help="Volver a la pagina de bienvenida"):
+        st.session_state["entered"] = False
+        st.query_params.clear()
+        st.rerun()
+
+    with st.expander("Guia rapida"):
         st.markdown("""
 **¿Qué hacen los hiperparámetros?**
 
@@ -358,9 +546,9 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════════════════════════
 
 tab_draw, tab_curves, tab_weights = st.tabs([
-    "✏️ Dibujá y predecí",
-    "📈 Curvas de entrenamiento",
-    "🔬 Pesos del modelo",
+    "Dibujo y prediccion",
+    "Curvas de entrenamiento",
+    "Pesos del modelo",
 ])
 
 
@@ -377,25 +565,25 @@ with tab_draw:
         _norm_mean, _norm_std = EMNIST_MEAN, EMNIST_STD
         _out_sz      = 26
         _class_labels = [chr(65 + i) for i in range(26)]
-        _draw_prompt  = "### ✏️ Dibujá una letra"
-        _draw_caption = "Trazá una mayúscula grande y centrada. Presioná 🗑️ para borrar."
-        _help_hint    = "Dibujá una letra primero"
+        _draw_prompt  = "### Dibuja una letra"
+        _draw_caption = "Traza una mayuscula grande y centrada."
+        _help_hint    = "Dibuja una letra primero"
         _prob_label   = "**Probabilidad por letra:**"
     else:
         _norm_mean, _norm_std = 0.1307, 0.3081
         _out_sz      = 10
         _class_labels = [str(i) for i in range(10)]
-        _draw_prompt  = "### ✏️ Dibujá un dígito"
-        _draw_caption = "Trazos blancos sobre fondo negro. Presioná 🗑️ para borrar."
-        _help_hint    = "Dibujá un número primero"
-        _prob_label   = "**Probabilidad por dígito:**"
+        _draw_prompt  = "### Dibuja un digito"
+        _draw_caption = "Trazos blancos sobre fondo negro."
+        _help_hint    = "Dibuja un numero primero"
+        _prob_label   = "**Probabilidad por digito:**"
 
     if not st.session_state[f"trained{_sfx}"]:
-        st.info("👈 Entrenà el modelo desde el panel izquierdo para empezar.")
+        st.info("Entrena el modelo desde el panel izquierdo para empezar.")
         st.stop()
 
     if not CANVAS_OK:
-        st.error("Instalá `streamlit-drawable-canvas`: `pip install streamlit-drawable-canvas`")
+        st.error("Instala `streamlit-drawable-canvas`: `pip install streamlit-drawable-canvas`")
         st.stop()
 
     # ── FASE 1: dibujo + botón Predecir ──────────────────────────────────────
@@ -420,7 +608,7 @@ with tab_draw:
             )
 
         with col_right:
-            st.markdown("### 🔮 Cuando estés listo...")
+            st.markdown("### Cuando estes listo")
             st.caption("Asegurate de que el trazo sea grande y centrado.")
 
             img_data    = canvas_result.image_data if canvas_result is not None else None
@@ -429,11 +617,11 @@ with tab_draw:
             st.markdown("<div style='height:160px'></div>", unsafe_allow_html=True)
 
             predict_btn = st.button(
-                "🔮 Predecir",
+                "Predecir",
                 type="primary",
                 use_container_width=True,
                 disabled=not has_drawing,
-                help=_help_hint if not has_drawing else "¡A predecir!",
+                help=_help_hint if not has_drawing else "Ejecutar prediccion",
             )
 
         # ── Lógica de predicción ────────────────────────────────────────────
@@ -471,17 +659,17 @@ with tab_draw:
         # Display character: letter or digit
         display_char = chr(65 + pred) if _mode == "letters" else str(pred)
 
-        st.markdown("### 🧠 La red neuronal en acción")
-        st.caption("La red se construye capa a capa. Luego podés hacer hover sobre cualquier nodo.")
+        st.markdown("### Red neuronal en accion")
+        st.caption("La red se construye capa a capa. Hover sobre cualquier nodo para ver detalles.")
 
-        with st.expander("💡 ¿Cómo leer este grafo?"):
+        with st.expander("Como leer este grafo"):
             st.markdown("""
-- **Nodos azul** = entrada (10 píxeles representativos de 784). El recuadro es lo dibujado.
-- **Nodos grises** = capas ocultas (ReLU). El **brillo y halo** reflejan la magnitud de activación.
+- **Nodos azul** = entrada (10 pixeles representativos de 784). El recuadro es lo dibujado.
+- **Nodos grises** = capas ocultas (ReLU). El **brillo y halo** reflejan la magnitud de activacion.
 - **Nodo verde** = clase predicha — los **3 pulsos** marcan el resultado.
-- **Líneas azules** = pesos positivos · **Naranja** = pesos negativos. Grosor ∝ magnitud del peso.
-- **Partículas** = señal fluyendo en tiempo real tras la construcción de la red.
-- **Hover** sobre cualquier nodo para ver activación exacta y estado ReLU.
+- **Lineas azules** = pesos positivos · **Naranja** = pesos negativos. Grosor = magnitud del peso.
+- **Particulas** = senal fluyendo en tiempo real tras la construccion de la red.
+- **Hover** sobre cualquier nodo para ver activacion exacta y estado ReLU.
             """)
 
         html_str = render_network_html(
@@ -502,7 +690,7 @@ with tab_draw:
         saliency = st.session_state.get(f"last_saliency{_sfx}")
         img_28   = st.session_state.get(f"last_input_image{_sfx}")
         if saliency is not None and img_28 is not None:
-            with st.expander("🔍 ¿En qué se fijó la red? (Mapa de saliencia)", expanded=True):
+            with st.expander("Mapa de saliencia — en que se fijo la red", expanded=True):
                 st.caption(
                     "Los píxeles **blancos/amarillos** influyeron más en la predicción. "
                     "Los **negros/rojos oscuros** fueron ignorados."
@@ -513,16 +701,16 @@ with tab_draw:
 
         # ── Resultado ───────────────────────────────────────────────────────
         st.divider()
-        st.markdown("### 🎯 Resultado")
+        st.markdown("### Resultado")
 
         res_col, btn_col = st.columns([3, 1], gap="large")
 
         with res_col:
-            bar_color = "#2ECC71" if conf >= 80 else "#F39C12" if conf >= 50 else "#E74C3C"
+            bar_color = "#3fb950" if conf >= 80 else "#d29922" if conf >= 50 else "#f85149"
             msg = (
-                "Alta confianza ✅" if conf >= 80
-                else "Confianza media ⚠️" if conf >= 50
-                else "Confianza baja ❌ — intentá dibujar más grande y centrado"
+                "Alta confianza" if conf >= 80
+                else "Confianza media" if conf >= 50
+                else "Confianza baja — intenta dibujar mas grande y centrado"
             )
             css_class = "correct" if conf >= 80 else "uncertain" if conf >= 50 else "wrong"
 
@@ -532,11 +720,11 @@ with tab_draw:
             )
             st.markdown(f"""
 <div style="margin:6px 0 20px 0;">
-  <div style="background:#f0f0f0; border-radius:8px; height:18px; overflow:hidden;">
+  <div style="background:#21262d; border-radius:8px; height:18px; overflow:hidden;">
     <div style="width:{conf:.0f}%; background:{bar_color}; height:100%; border-radius:8px;"></div>
   </div>
   <div style="display:flex; justify-content:space-between; margin-top:4px;
-              font-size:13px; color:#555;">
+              font-size:13px; color:#8b949e;">
     <span>{msg}</span><span><b>{conf:.1f}%</b></span>
   </div>
 </div>
@@ -547,21 +735,21 @@ with tab_draw:
             for i, p in enumerate(probs):
                 pct   = p * 100
                 bold  = "font-weight:900; font-size:15px;" if i == pred else "font-size:14px;"
-                color = bar_color if i == pred else "#4C72B0"
+                color = bar_color if i == pred else "#58a6ff"
                 lbl   = _class_labels[i]
                 rows_html += f"""
 <div style="display:flex; align-items:center; gap:8px; margin:3px 0;">
-  <span style="width:18px; text-align:right; {bold}">{lbl}</span>
-  <div style="flex:1; background:#f0f0f0; border-radius:6px; height:20px; overflow:hidden;">
+  <span style="width:18px; text-align:right; color:#c9d1d9; {bold}">{lbl}</span>
+  <div style="flex:1; background:#21262d; border-radius:6px; height:20px; overflow:hidden;">
     <div style="width:{pct:.1f}%; background:{color}; height:100%; border-radius:6px;"></div>
   </div>
-  <span style="width:48px; font-size:13px; color:#333;">{pct:.1f}%</span>
+  <span style="width:48px; font-size:13px; color:#8b949e;">{pct:.1f}%</span>
 </div>"""
             st.markdown(f"<div style='padding:4px 0'>{rows_html}</div>", unsafe_allow_html=True)
 
         with btn_col:
             st.markdown("<div style='height:60px'></div>", unsafe_allow_html=True)
-            if st.button("🔄 Intentar de nuevo", use_container_width=True):
+            if st.button("Intentar de nuevo", use_container_width=True):
                 st.session_state[f"show_result{_sfx}"]      = False
                 st.session_state[f"attempt{_sfx}"]          += 1
                 st.session_state[f"last_activations{_sfx}"] = None
@@ -571,10 +759,58 @@ with tab_draw:
                 st.session_state[f"last_saliency{_sfx}"]    = None
                 st.rerun()
 
-            with st.expander("🔬 28×28"):
+            with st.expander("Input 28x28"):
                 img_28 = st.session_state.get(f"last_input_image{_sfx}")
                 if img_28 is not None:
                     st.image(img_28 / 255.0, width=112, caption="Lo que ve la red")
+
+        # ── t-SNE en Tab 1 ───────────────────────────────────────────────────
+        st.divider()
+        st.subheader("Embedding space — donde cae tu dibujo")
+        st.caption(
+            "El t-SNE muestra cómo la red agrupa internamente todas las clases. "
+            f"La estrella marca el cluster de **{display_char}**, la clase predicha."
+        )
+
+        with st.expander("Que es el t-SNE"):
+            st.markdown("""
+Cada punto representa una imagen del test set vista a traves de la **ultima capa oculta** de la red.
+t-SNE las comprime a 2D conservando la estructura de vecindad.
+
+- **Clusters bien separados** — la red aprendio representaciones discriminativas.
+- **Clusters solapados** — esas clases se parecen para la red (ej. 4 y 9, o I y J).
+- La estrella indica el centroide del cluster de la clase predicha.
+            """)
+
+        _tsne_n1 = st.slider("Muestras", 200, 2000, 1000, step=100, key=f"tsne_n1_{_sfx}")
+
+        if st.button("Generar t-SNE", key=f"tsne_btn1_{_sfx}"):
+            with st.spinner("Extrayendo activaciones y calculando t-SNE…"):
+                from sklearn.manifold import TSNE as _TSNE
+
+                if _mode == "letters":
+                    _, _, _tsne_loader1 = load_emnist_letters(batch_size=256)
+                else:
+                    _, _, _tsne_loader1 = load_mnist(batch_size=256)
+
+                _embeds1, _lbls1 = net.extract_embeddings(_tsne_loader1, n_samples=_tsne_n1)
+                _coords1 = _TSNE(
+                    n_components=2, random_state=42,
+                    perplexity=min(30, _tsne_n1 // 10),
+                ).fit_transform(_embeds1)
+
+                st.session_state[f"tsne_coords{_sfx}"] = _coords1
+                st.session_state[f"tsne_labels{_sfx}"] = _lbls1
+
+        _tc = st.session_state.get(f"tsne_coords{_sfx}")
+        _tl = st.session_state.get(f"tsne_labels{_sfx}")
+        if _tc is not None and _tl is not None:
+            st.plotly_chart(
+                plot_tsne(_tc, _tl, _class_labels, highlight_class=pred),
+                use_container_width=True,
+            )
+        else:
+            st.info("Presiona **Generar t-SNE** para visualizar el embedding space de la red.")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -608,18 +844,18 @@ with tab_curves:
                 use_container_width=True,
             )
 
-        with st.expander("💡 ¿Cómo leer estas curvas?"):
+        with st.expander("Como leer estas curvas"):
             st.markdown("""
-- **Loss (pérdida):** queremos que baje. Si la val loss sube mientras train loss baja → **overfitting**.
-- **Accuracy:** queremos que suba. Para MNIST, 5 épocas → ~97–98%. EMNIST Letters → ~85–90%.
-- La **brecha** entre entrenamiento y validación indica si la red memoriza o generaliza.
+- **Loss (perdida):** queremos que baje. Si la val loss sube mientras train loss baja — **overfitting**.
+- **Accuracy:** queremos que suba. Para MNIST, 5 epocas — ~97-98%. EMNIST Letters — ~85-90%.
+- La **brecha** entre entrenamiento y validacion indica si la red memoriza o generaliza.
             """)
 
         # ── Matriz de confusión ────────────────────────────────────────────────
         cm = st.session_state.get(f"confusion_matrix{_sfx2}")
         if cm is not None:
             st.divider()
-            st.subheader("🟩 Matriz de confusión (test set)")
+            st.subheader("Matriz de confusion (test set)")
             _cm_labels = (
                 [chr(65 + i) for i in range(26)]
                 if st.session_state["mode"] == "letters"
@@ -629,19 +865,19 @@ with tab_curves:
                 plot_confusion_matrix(cm, class_labels=_cm_labels),
                 use_container_width=True,
             )
-            with st.expander("💡 ¿Cómo leer la matriz de confusión?"):
+            with st.expander("Como leer la matriz de confusion"):
                 st.markdown("""
-- **Filas** = clase real · **Columnas** = clase predicha por el modelo.
+- **Filas** = clase real. **Columnas** = clase predicha por el modelo.
 - Los valores son **porcentajes por fila** (recall por clase). La diagonal perfecta = 100%.
 - Un cuadrado brillante **fuera de la diagonal** indica que la red confunde esas dos clases.
-- *Ejemplo*: si en la fila "4" el color más fuerte está en la columna "9", la red confunde 4s con 9s.
-- **Letras frecuentemente confundidas**: C↔G, I↔J, U↔V. ¿Las ves en tu matriz?
+- *Ejemplo*: si en la fila "4" el color mas fuerte esta en la columna "9", la red confunde 4s con 9s.
+- **Letras frecuentemente confundidas**: C-G, I-J, U-V.
                 """)
 
         # ── t-SNE ─────────────────────────────────────────────────────────────
         st.divider()
-        st.subheader("🔭 t-SNE — Representaciones internas de la red")
-        with st.expander("💡 ¿Qué muestra el t-SNE?"):
+        st.subheader("t-SNE — Representaciones internas de la red")
+        with st.expander("Que muestra el t-SNE"):
             st.markdown("""
 t-SNE reduce las activaciones de la **última capa oculta** a 2 dimensiones para que podamos verlas.
 Cada punto es una imagen del test set; el color indica la clase real.
@@ -656,7 +892,7 @@ La computación tarda ~10–20 segundos según la cantidad de muestras.
         _tsne_n = st.slider("Muestras para t-SNE", 200, 2000, 1000, step=100,
                             key=f"tsne_n_{_sfx2}")
 
-        if st.button("🔭 Generar t-SNE", key=f"tsne_btn_{_sfx2}"):
+        if st.button("Generar t-SNE", key=f"tsne_btn_{_sfx2}"):
             with st.spinner("Extrayendo activaciones y calculando t-SNE…"):
                 from sklearn.manifold import TSNE
 
@@ -702,12 +938,12 @@ with tab_weights:
 
         # ── Campos receptivos primera capa ────────────────────────────────────
         st.subheader("Campos receptivos — 1ª capa oculta")
-        with st.expander("💡 ¿Qué son?"):
+        with st.expander("Que son los campos receptivos"):
             st.markdown("""
-Cada neurona de la 1ª capa tiene **784 pesos** (uno por píxel 28×28).
-Al visualizarlos como imagen vemos **qué patrón activa esa neurona**.
-Rojo = pesos positivos (se activa con esos píxeles). Azul = pesos negativos.
-Después de entrenar vas a ver formas que recuerdan trazos de dígitos.
+Cada neurona de la 1a capa tiene **784 pesos** (uno por pixel 28x28).
+Al visualizarlos como imagen vemos **que patron activa esa neurona**.
+Rojo = pesos positivos (se activa con esos pixeles). Azul = pesos negativos.
+Despues de entrenar vas a ver formas que recuerdan trazos de digitos.
             """)
 
         n_show = st.slider("Neuronas a mostrar", 4,

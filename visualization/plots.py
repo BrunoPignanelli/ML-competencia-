@@ -721,13 +721,15 @@ def plot_tsne(
     coords: np.ndarray,
     labels: np.ndarray,
     class_labels: List[str],
+    highlight_class: Optional[int] = None,
 ) -> go.Figure:
     """
     Scatter t-SNE interactivo con Plotly, un color por clase.
 
-    coords : ndarray (n, 2)  — coordenadas 2D de t-SNE.
-    labels : ndarray (n,)    — índices de clase (enteros).
-    class_labels : list       — ["0"…"9"] o ["A"…"Z"].
+    coords          : ndarray (n, 2)  — coordenadas 2D de t-SNE.
+    labels          : ndarray (n,)    — índices de clase (enteros).
+    class_labels    : list             — ["0"…"9"] o ["A"…"Z"].
+    highlight_class : int, opcional    — índice de la clase predicha; marca su centroide con ★.
     """
     # Paleta: 10 colores para dígitos, 26 para letras (ciclamos si hace falta)
     PALETTE = [
@@ -760,6 +762,25 @@ def plot_tsne(
             ),
             hovertemplate=f"<b>{class_labels[cls_idx]}</b><extra></extra>",
         ))
+
+    # Highlight predicted class: large star on cluster centroid
+    if highlight_class is not None and highlight_class < len(class_labels):
+        mask_h = labels == highlight_class
+        if mask_h.any():
+            cx = float(coords[mask_h, 0].mean())
+            cy = float(coords[mask_h, 1].mean())
+            color_h = PALETTE[highlight_class % len(PALETTE)]
+            fig.add_trace(go.Scatter(
+                x=[cx], y=[cy],
+                mode="markers+text",
+                marker=dict(symbol="star", size=22, color=color_h,
+                            line=dict(color="white", width=2)),
+                text=[f"★ {class_labels[highlight_class]}"],
+                textposition="top center",
+                textfont=dict(color="white", size=13),
+                hovertemplate=f"<b>Tu dibujo → {class_labels[highlight_class]}</b><extra></extra>",
+                showlegend=False,
+            ))
 
     fig.update_layout(
         title=dict(

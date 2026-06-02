@@ -51,7 +51,8 @@ mnist-neural-net-edu/
 └── visualization/
     ├── __init__.py
     ├── plots.py                  # Plotly/matplotlib chart functions + saliency overlay
-    └── network_html.py           # HTML/Canvas 60fps animated network component
+    ├── network_html.py           # HTML/Canvas 60fps animated network component
+    └── landing_html.py           # Animated cover/landing page (render_landing_html())
 ```
 
 - Never mix training logic into `app.py`.
@@ -101,7 +102,7 @@ The trainer must:
 5. Use `torch.no_grad()` for validation passes.
 6. Compute accuracy as `correct / total * 100`.
 
-**Retrain feature:** Second press of Train button with same architecture → button label changes to `"🔁 Seguir entrenando (30 épocas)"` → continues training the existing model (reuses Adam optimizer, momentum carries over). Detection:
+**Retrain feature:** Second press of Train button with same architecture → button label changes to `"Seguir entrenando (30 epocas)"` → continues training the existing model (reuses Adam optimizer, momentum carries over). Detection:
 ```python
 same_arch = (
     st.session_state[f"trained{sfx}"]
@@ -191,15 +192,16 @@ _class_labels = [chr(65+i) for i in range(26)] if _mode == "letters" else [str(i
 ```
 
 **FASE 1** (`show_result == False`):
-- Canvas + "🔮 Predecir" button (disabled when canvas is empty).
+- Canvas + "Predecir" button (disabled when canvas is empty).
 - On press: preprocess → `predict_proba` → `forward_with_activations` → `compute_saliency` → store all in session state → `show_result=True` → `st.rerun()`.
 
 **FASE 2** (`show_result == True`):
 1. `render_network_html(...)` → `components.html()` — sequential build animation.
-2. `st.expander("🔍 ¿En qué se fijó la red?")` → `plot_saliency_overlay(img_28, saliency, display_char)` → `st.pyplot()`.
+2. `st.expander("Mapa de saliencia")` → `plot_saliency_overlay(img_28, saliency, display_char)` → `st.pyplot()`.
 3. Big predicted char (`chr(65+pred)` for letters, `str(pred)` for digits) + confidence bar.
 4. Per-class probability bars, labeled with `_class_labels[i]`.
-5. "🔄 Intentar de nuevo" — clears all `last_*{sfx}` keys, increments `attempt{sfx}`, reruns.
+5. "Intentar de nuevo" — clears all `last_*{sfx}` keys, increments `attempt{sfx}`, reruns.
+6. t-SNE section below result — "Generar t-SNE" button with `highlight_class=pred`.
 
 ### SKILL: Saliency Map (Pixel Importance Visualization)
 
@@ -305,7 +307,7 @@ At the top of the sidebar, before hyperparameters:
 
 ```python
 st.radio("Módulo", options=["digits", "letters"],
-    format_func=lambda m: "🔢 Dígitos (MNIST)" if m == "digits" else "🔡 Letras (EMNIST)",
+    format_func=lambda m: "Digitos (MNIST)" if m == "digits" else "Letras (EMNIST)",
     horizontal=True, key="mode")
 mode = st.session_state["mode"]
 ```
@@ -315,15 +317,18 @@ All downstream code derives `sfx`, `out_sz`, `_norm_mean/_norm_std`, `_class_lab
 ### SKILL: UI Layout
 
 ```
-Sidebar: mode radio → hyperparameter sliders → SVG preview → Train button → status badge → tips
-Tabs: ["✏️ Dibujá y predecí", "📈 Curvas de entrenamiento", "🔬 Pesos del modelo"]
+Landing page (visualization/landing_html.py) — shown first; "Entrar" button sets ?app=1
+Sidebar: mode radio → hyperparameter sliders → SVG preview → Train button → status badge → tips → "Volver al inicio" button
+Tabs: ["Dibujo y prediccion", "Curvas de entrenamiento", "Pesos del modelo"]
 ```
 
-- **Tab 1**: FASE 1 (canvas + Predict) → FASE 2 (network animation → saliency map → result → retry).
+- **Tab 1**: FASE 1 (canvas + Predict) → FASE 2 (network animation → saliency map → result → retry → t-SNE).
 - **Tab 2**: 3 `st.metric` KPIs + loss curve + accuracy curve + confusion matrix + t-SNE section.
 - **Tab 3**: receptive field grid + per-layer weight heatmap + bias bars.
 
 All tabs read state via the `sfx` suffix pattern so they show the correct module's data.
+
+**No emojis anywhere in the UI** — all button labels, tab names, expander titles, and status messages are plain text. SVG icons are used in the landing page cards and steps instead of emoji.
 
 ### SKILL: Code Quality Rules
 
@@ -419,7 +424,95 @@ Each visualization section must include an `st.expander` explaining:
 - What to look for (overfitting signals, convergence, weight patterns).
 - How hyperparameters affect it.
 
-Saliency expander caption: `"Los píxeles blancos/amarillos influyeron más en la predicción. Los negros/rojos oscuros fueron ignorados."`
+Saliency expander caption: `"Los pixeles blancos/amarillos influyeron mas en la prediccion. Los negros/rojos oscuros fueron ignorados."`
+
+### SKILL: Professional Dark Theme
+
+The entire app uses a GitHub-inspired dark palette injected as a single `st.markdown("""<style>...""")` block at the top of `app.py`, immediately after the landing gate.
+
+**Color palette:**
+```
+BG_MAIN   = #0d1117   (page background)
+BG_CARD   = #161b22   (sidebar, expanders, metrics)
+BG_INPUT  = #21262d   (buttons, bars, inputs)
+BORDER    = #21262d / #30363d
+ACCENT_BLUE   = #58a6ff  (tabs, links, probability bars)
+ACCENT_GREEN  = #3fb950  (success, high confidence, output nodes)
+ACCENT_YELLOW = #d29922  (warning, medium confidence)
+ACCENT_RED    = #f85149  (error, low confidence)
+TEXT_HI   = #e6edf3   (headings)
+TEXT_MID  = #c9d1d9   (body text)
+TEXT_LO   = #8b949e   (captions, secondary)
+```
+
+**Key CSS selectors covered:**
+- `[data-testid="stAppViewContainer"]`, `.main` — page background
+- `[data-testid="stSidebar"]` — sidebar background + right border
+- `[data-testid="column"]`, `[data-testid="stVerticalBlock"]` — column containers (must be set to prevent white flash)
+- `.stTabs [data-baseweb="tab-list"]` — tab bar
+- `.stTabs [aria-selected="true"]` — active tab (blue underline)
+- `.stButton > button[kind="primary"]` — green gradient primary buttons
+- `details[data-testid="stExpander"]` — expander background + border
+- `[data-testid="stMetric"]` — metric card background
+- `.big-digit` — large monospace predicted character display
+- `.correct` / `.uncertain` / `.wrong` — semantic color classes for confidence levels
+
+**Inline HTML dark-theme colors (for custom bars):**
+- Bar track background: `#21262d` (not `#f0f0f0`)
+- Secondary text: `#8b949e` (not `#555`)
+- Label text: `#c9d1d9` (not `#333`)
+
+**SVG preview node colors:**
+- Input layer: `#58a6ff` (blue)
+- Hidden layers: `#8b949e` (grey)
+- Output layer: `#3fb950` (green)
+
+### SKILL: Landing Page (`visualization/landing_html.py`)
+
+`render_landing_html() -> str` returns a self-contained HTML/CSS/JS string for the animated cover page.
+
+**4 sections (heights set via JS `window.innerHeight`, not `100vh`):**
+1. **Hero** — Canvas animation (5-layer phantom network, pulsing nodes, flowing particles) + title "Neural Decode" with gradient text + scroll indicator
+2. **Features** — 3 glassmorphism cards with inline SVG icons (no emojis): Configure, Draw & Predict, Explore
+3. **How It Works** — 4 steps with inline SVG icons connected by animated dashes
+4. **CTA** — "Entrar a la plataforma" pill button
+
+**Navigation (Enter button):**
+```javascript
+document.getElementById('enterBtn').addEventListener('click', function() {
+  try {
+    var top = window.top;
+    var dest = top.location.origin + top.location.pathname + '?app=1';
+    top.location.href = dest;
+  } catch (e) {
+    window.location.href = window.location.origin + '/?app=1';
+  }
+});
+```
+
+**Gate mechanism in `app.py`:**
+```python
+if st.query_params.get("app"):
+    st.session_state["entered"] = True
+
+if not st.session_state.get("entered", False):
+    # CSS: hide chrome, position:fixed iframe covers full viewport
+    components.html(render_landing_html(), height=900, scrolling=True)
+    st.stop()
+```
+
+**"Volver al inicio" button** (sidebar) must call `st.query_params.clear()` BEFORE `st.rerun()`, otherwise the `?app=1` param re-sets `entered=True` on the next run:
+```python
+if st.button("← Volver al inicio"):
+    st.session_state["entered"] = False
+    st.query_params.clear()   # ← critical: clears ?app=1 from URL
+    st.rerun()
+```
+
+**Anti-patterns:**
+- Do NOT use `100vh` inside landing sections — resolves to iframe height, not viewport. Use `window.innerHeight` via JS.
+- Do NOT use `window.parent.location.href` — blocked by sandbox. Use `window.top.location`.
+- Do NOT use emojis in landing page content — use inline SVG icons instead.
 
 ---
 
@@ -442,6 +535,9 @@ Saliency expander caption: `"Los píxeles blancos/amarillos influyeron más en l
 | Live curves | `st.empty()` placeholder updated in `on_epoch` | User watches loss fall without leaving sidebar |
 | Confusion matrix | Computed post-train, stored in session state | Always fresh; cleared on retrain |
 | t-SNE | On-demand via button; `sklearn.TSNE` | Avoids blocking training; result cached |
+| Dark theme | GitHub-inspired palette, single CSS block in `app.py` | Consistent, no emojis, professional look |
+| Landing page | `visualization/landing_html.py`, SVG icons, `window.innerHeight` | No emojis; works inside Streamlit iframe |
+| Icons | Inline SVG only (no emojis) | Consistent rendering across OS/browser |
 
 ---
 
@@ -470,6 +566,12 @@ Saliency expander caption: `"Los píxeles blancos/amarillos influyeron más en l
 - Do NOT store a DataLoader in session state — recreate it when needed (not serializable).
 - Do NOT pass `perplexity > n_samples/10` to sklearn TSNE — it will raise a ValueError.
 - Do NOT forget to clear `tsne_coords{sfx}` and `tsne_labels{sfx}` on retrain — stale embeddings from the old model are meaningless.
+- Do NOT use emojis anywhere in the UI — use plain text for labels/buttons and inline SVG for icons.
+- Do NOT use light background colors (`#f0f0f0`, `#fff`, `#333`) in inline HTML — use dark palette (`#21262d` tracks, `#8b949e` secondary text, `#c9d1d9` labels).
+- Do NOT use `100vh` inside landing page sections — inside a Streamlit iframe this resolves to the full iframe height, not the visible viewport. Always set heights via `window.innerHeight` in JS.
+- Do NOT use `window.parent.location.href` from the landing iframe — blocked by sandbox. Use `window.top.location.origin + window.top.location.pathname + '?app=1'`.
+- Do NOT forget `st.query_params.clear()` before `st.rerun()` in the "Volver al inicio" button — without it, `?app=1` re-triggers `entered=True` on the next run and the landing page never shows.
+- Do NOT omit `[data-testid="column"]` from the dark theme CSS — columns default to white and will show a white flash next to the drawable canvas.
 
 ---
 
@@ -477,17 +579,23 @@ Saliency expander caption: `"Los píxeles blancos/amarillos influyeron más en l
 
 Manual checklist before delivering:
 
+**Landing page:**
+0. Open `localhost:8501` → landing fills full viewport, no sidebar/header visible.
+0. Scroll through Hero → Features → How It Works → CTA; each section animates in.
+0. Click "Entrar a la plataforma" → navigates to `?app=1`, main app loads with sidebar.
+0. Sidebar "Volver al inicio" → returns to landing (URL cleared of `?app=1`).
+
 **Digits flow:**
-1. Sidebar → mode = 🔢 Dígitos → train [128, 64], lr=0.001, epochs=5, batch=64 → live progress shows.
-2. Second train press with same arch → button says "🔁 Seguir entrenando (30 épocas)" → continues from existing weights.
+1. Sidebar → mode = Digitos → train [128, 64], lr=0.001, epochs=5, batch=64 → live progress shows.
+2. Second train press with same arch → button says "Seguir entrenando (30 epocas)" → continues from existing weights.
 3. Curvas tab → loss + accuracy curves render with full history (including retrain epochs appended).
 4. Pesos tab → receptive fields + weight heatmap + bias bars render.
-5. Dibujá tab → canvas blank, Predict button disabled.
-6. Draw digit → Predict → FASE 2: network builds layer by layer → saliency map expander shows 3 panels → result shows big digit + confidence + probability bars.
+5. Dibujo tab → canvas blank, Predict button disabled, dark background on both columns (no white flash).
+6. Draw digit → Predict → FASE 2: network builds layer by layer → saliency map expander shows 3 panels → result shows big digit + confidence + probability bars (dark theme).
 7. Retry → blank canvas, FASE 1.
 
 **Letters flow:**
-8. Sidebar → mode = 🔡 Letras → train → EMNIST downloads (~50 MB first time).
+8. Sidebar → mode = Letras → train → EMNIST downloads (~50 MB first time).
 9. Draw a letter → Predict → animation has 26 output nodes → result shows predicted letter A-Z.
 10. Probability bars labeled A-Z.
 11. Saliency map works identically.
