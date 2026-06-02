@@ -192,7 +192,10 @@ _class_labels = [chr(65+i) for i in range(26)] if _mode == "letters" else [str(i
 ```
 
 **FASE 1** (`show_result == False`):
-- Canvas + "Predecir" button (disabled when canvas is empty).
+- Canvas in a narrow column (`canvas_col, spacer_col = st.columns([2, 3])`), width=280, height=280.
+  The narrow column prevents the `st_canvas` iframe from bleeding a white background into the remaining space.
+- "Predecir" button rendered below the canvas (not beside it) — no right column needed.
+- Button disabled when canvas is empty.
 - On press: preprocess → `predict_proba` → `forward_with_activations` → `compute_saliency` → store all in session state → `show_result=True` → `st.rerun()`.
 
 **FASE 2** (`show_result == True`):
@@ -471,6 +474,11 @@ TEXT_LO   = #8b949e   (captions, secondary)
 
 `render_landing_html() -> str` returns a self-contained HTML/CSS/JS string for the animated cover page.
 
+**Typography — loaded via Google Fonts `<link>` in the HTML `<head>`:**
+- `Space Grotesk` (700) — all headlines: hero title, section titles, CTA, card titles, step headings
+- `Inter` (400/500/600/700) — body text, subtitles, button labels, captions
+- `JetBrains Mono` (400/500) — eyebrows, section labels, pills, tech stack badges
+
 **4 sections (heights set via JS `window.innerHeight`, not `100vh`):**
 1. **Hero** — Canvas animation (5-layer phantom network, pulsing nodes, flowing particles) + title "Neural Decode" with gradient text + scroll indicator
 2. **Features** — 3 glassmorphism cards with inline SVG icons (no emojis): Configure, Draw & Predict, Explore
@@ -572,6 +580,8 @@ if st.button("← Volver al inicio"):
 - Do NOT use `window.parent.location.href` from the landing iframe — blocked by sandbox. Use `window.top.location.origin + window.top.location.pathname + '?app=1'`.
 - Do NOT forget `st.query_params.clear()` before `st.rerun()` in the "Volver al inicio" button — without it, `?app=1` re-triggers `entered=True` on the next run and the landing page never shows.
 - Do NOT omit `[data-testid="column"]` from the dark theme CSS — columns default to white and will show a white flash next to the drawable canvas.
+- Do NOT place `st_canvas` in a wide column with content in a separate right column — the canvas iframe renders white in the space to the right of the canvas element. Instead, use a narrow column that matches the canvas width (280px → ratio 2 out of 5) and put the Predict button below the canvas.
+- Do NOT use emojis in the landing page — use inline SVG icons. Do NOT use system fonts in the landing — load Inter + Space Grotesk + JetBrains Mono via Google Fonts.
 
 ---
 
