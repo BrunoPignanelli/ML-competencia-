@@ -170,3 +170,26 @@ class Trainer:
                 epoch_callback(epoch, metrics)
 
         return history
+
+    @torch.no_grad()
+    def confusion_matrix(self, loader: DataLoader, n_classes: int) -> "np.ndarray":
+        """
+        Calcula la matriz de confusión normalizada por fila sobre un DataLoader.
+
+        Retorna un array (n_classes, n_classes) donde cada fila suma 1.0.
+        Fila = clase real, columna = clase predicha.
+        """
+        import numpy as np
+        self.model.eval()
+        cm = np.zeros((n_classes, n_classes), dtype=np.int64)
+
+        for images, labels in loader:
+            images  = images.to(self.device)
+            labels  = labels.to(self.device)
+            preds   = self.model(images).argmax(dim=1)
+            for true, pred in zip(labels.cpu().numpy(), preds.cpu().numpy()):
+                cm[true, pred] += 1
+
+        # Normalize by row (true label) → recall per class; avoid division by zero
+        row_sums = cm.sum(axis=1, keepdims=True)
+        return cm / np.where(row_sums == 0, 1, row_sums)

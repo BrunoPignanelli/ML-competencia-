@@ -7,6 +7,7 @@ Diseño centrado en el estudiante:
   - Tabs secundarios: curvas de entrenamiento y visualización de pesos (opcional).
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
@@ -20,9 +21,12 @@ from visualization.network_html import render_network_html
 from visualization.plots import (
     plot_accuracy_curve,
     plot_bias_bars,
+    plot_confusion_matrix,
     plot_first_layer_receptive_fields,
     plot_loss_curve,
     plot_prediction_probabilities,
+    plot_saliency_overlay,
+    plot_tsne,
     plot_weight_heatmap,
 )
 
@@ -143,6 +147,10 @@ def _init():
         last_input_image=None,
         show_result=False,
         attempt=0,
+        last_saliency=None,          # mapa de saliencia (28×28) de la última predicción
+        confusion_matrix=None,       # matriz de confusión normalizada (10×10)
+        tsne_coords=None,            # coordenadas t-SNE (n, 2)
+        tsne_labels=None,            # etiquetas de clase para t-SNE (n,)
         # ── Letras (EMNIST) ───────────────────────────────────────────────────
         model_letters=None,
         trainer_letters=None,
@@ -158,6 +166,10 @@ def _init():
         last_input_image_letters=None,
         show_result_letters=False,
         attempt_letters=0,
+        last_saliency_letters=None,  # mapa de saliencia para letras
+        confusion_matrix_letters=None,  # matriz de confusión normalizada (26×26)
+        tsne_coords_letters=None,       # coordenadas t-SNE para letras (n, 2)
+        tsne_labels_letters=None,       # etiquetas de clase para t-SNE letras (n,)
         # ── Modo activo ───────────────────────────────────────────────────────
         mode="digits",
     )
@@ -280,6 +292,7 @@ with st.sidebar:
         col_a, col_b = st.columns(2)
         ph_loss = col_a.empty()
         ph_acc  = col_b.empty()
+        ph_live_chart = st.empty()   # actualizado cada época con la curva de loss
 
         def on_epoch(epoch, metrics):
             pct = epoch / epochs_to_run
@@ -290,18 +303,33 @@ with st.sidebar:
             st.session_state[f"val_losses{sfx}"].append(metrics["val_loss"])
             st.session_state[f"train_accs{sfx}"].append(metrics["train_acc"])
             st.session_state[f"val_accs{sfx}"].append(metrics["val_acc"])
+            # Live chart: mostrar desde la época 2 para que el gráfico tenga al menos 2 puntos
+            if epoch >= 2:
+                ph_live_chart.plotly_chart(
+                    plot_loss_curve(
+                        st.session_state[f"train_losses{sfx}"],
+                        st.session_state[f"val_losses{sfx}"],
+                    ),
+                    use_container_width=True,
+                )
 
         trainer.fit(train_loader, val_loader, epochs=epochs_to_run, epoch_callback=on_epoch)
 
         _, test_acc = trainer.evaluate(test_loader)
         st.session_state[f"test_acc{sfx}"]              = test_acc
         st.session_state[f"trained{sfx}"]               = True
+        # Compute confusion matrix on test set
+        cm = trainer.confusion_matrix(test_loader, n_classes=out_sz)
+        st.session_state[f"confusion_matrix{sfx}"]      = cm
         # Clear stale prediction so activations don't mismatch a new model
         st.session_state[f"show_result{sfx}"]           = False
         st.session_state[f"last_activations{sfx}"]      = None
         st.session_state[f"last_probs{sfx}"]            = None
         st.session_state[f"last_pred{sfx}"]             = None
         st.session_state[f"last_input_image{sfx}"]      = None
+        st.session_state[f"last_saliency{sfx}"]         = None
+        st.session_state[f"tsne_coords{sfx}"]           = None
+        st.session_state[f"tsne_labels{sfx}"]           = None
         prog.progress(1.0, text=f"✅ Listo — {test_acc:.1f}% en test")
         st.rerun()
 
@@ -423,10 +451,13 @@ with tab_draw:
             pred  = int(probs.argmax())
             _, acts = net.forward_with_activations(tensor)
 
+            saliency = net.compute_saliency(tensor, pred)
+
             st.session_state[f"last_activations{_sfx}"] = acts
             st.session_state[f"last_probs{_sfx}"]        = probs
             st.session_state[f"last_pred{_sfx}"]         = pred
             st.session_state[f"last_input_image{_sfx}"]  = img_28
+            st.session_state[f"last_saliency{_sfx}"]     = saliency
             st.session_state[f"show_result{_sfx}"]       = True
             st.rerun()
 
@@ -466,6 +497,19 @@ with tab_draw:
             class_labels=_class_labels,
         )
         components.html(html_str, height=535, scrolling=False)
+
+        # ── Mapa de saliencia ────────────────────────────────────────────────
+        saliency = st.session_state.get(f"last_saliency{_sfx}")
+        img_28   = st.session_state.get(f"last_input_image{_sfx}")
+        if saliency is not None and img_28 is not None:
+            with st.expander("🔍 ¿En qué se fijó la red? (Mapa de saliencia)", expanded=True):
+                st.caption(
+                    "Los píxeles **blancos/amarillos** influyeron más en la predicción. "
+                    "Los **negros/rojos oscuros** fueron ignorados."
+                )
+                fig_sal = plot_saliency_overlay(img_28, saliency, display_char)
+                st.pyplot(fig_sal, use_container_width=True)
+                plt.close(fig_sal)
 
         # ── Resultado ───────────────────────────────────────────────────────
         st.divider()
@@ -524,6 +568,7 @@ with tab_draw:
                 st.session_state[f"last_probs{_sfx}"]       = None
                 st.session_state[f"last_pred{_sfx}"]        = None
                 st.session_state[f"last_input_image{_sfx}"] = None
+                st.session_state[f"last_saliency{_sfx}"]    = None
                 st.rerun()
 
             with st.expander("🔬 28×28"):
@@ -569,6 +614,79 @@ with tab_curves:
 - **Accuracy:** queremos que suba. Para MNIST, 5 épocas → ~97–98%. EMNIST Letters → ~85–90%.
 - La **brecha** entre entrenamiento y validación indica si la red memoriza o generaliza.
             """)
+
+        # ── Matriz de confusión ────────────────────────────────────────────────
+        cm = st.session_state.get(f"confusion_matrix{_sfx2}")
+        if cm is not None:
+            st.divider()
+            st.subheader("🟩 Matriz de confusión (test set)")
+            _cm_labels = (
+                [chr(65 + i) for i in range(26)]
+                if st.session_state["mode"] == "letters"
+                else [str(i) for i in range(10)]
+            )
+            st.plotly_chart(
+                plot_confusion_matrix(cm, class_labels=_cm_labels),
+                use_container_width=True,
+            )
+            with st.expander("💡 ¿Cómo leer la matriz de confusión?"):
+                st.markdown("""
+- **Filas** = clase real · **Columnas** = clase predicha por el modelo.
+- Los valores son **porcentajes por fila** (recall por clase). La diagonal perfecta = 100%.
+- Un cuadrado brillante **fuera de la diagonal** indica que la red confunde esas dos clases.
+- *Ejemplo*: si en la fila "4" el color más fuerte está en la columna "9", la red confunde 4s con 9s.
+- **Letras frecuentemente confundidas**: C↔G, I↔J, U↔V. ¿Las ves en tu matriz?
+                """)
+
+        # ── t-SNE ─────────────────────────────────────────────────────────────
+        st.divider()
+        st.subheader("🔭 t-SNE — Representaciones internas de la red")
+        with st.expander("💡 ¿Qué muestra el t-SNE?"):
+            st.markdown("""
+t-SNE reduce las activaciones de la **última capa oculta** a 2 dimensiones para que podamos verlas.
+Cada punto es una imagen del test set; el color indica la clase real.
+
+- **Clusters bien separados** → la red aprendió representaciones discriminativas.
+- **Clusters mezclados** → esas clases se parecen para la red (ej. 4 y 9, o I y J).
+- Cuanto más entrenás, más separados quedan los clusters.
+
+La computación tarda ~10–20 segundos según la cantidad de muestras.
+            """)
+
+        _tsne_n = st.slider("Muestras para t-SNE", 200, 2000, 1000, step=100,
+                            key=f"tsne_n_{_sfx2}")
+
+        if st.button("🔭 Generar t-SNE", key=f"tsne_btn_{_sfx2}"):
+            with st.spinner("Extrayendo activaciones y calculando t-SNE…"):
+                from sklearn.manifold import TSNE
+
+                # Recrear el loader con batch_size grande para ser eficientes
+                if st.session_state["mode"] == "letters":
+                    _, _, _tsne_loader = load_emnist_letters(batch_size=256)
+                else:
+                    _, _, _tsne_loader = load_mnist(batch_size=256)
+
+                _net: NeuralNet = st.session_state[f"model{_sfx2}"]
+                _embeds, _lbls = _net.extract_embeddings(_tsne_loader, n_samples=_tsne_n)
+
+                _tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, _tsne_n // 10))
+                _coords = _tsne.fit_transform(_embeds)
+
+                st.session_state[f"tsne_coords{_sfx2}"] = _coords
+                st.session_state[f"tsne_labels{_sfx2}"] = _lbls
+
+        _tsne_coords = st.session_state.get(f"tsne_coords{_sfx2}")
+        _tsne_labels = st.session_state.get(f"tsne_labels{_sfx2}")
+        if _tsne_coords is not None and _tsne_labels is not None:
+            _tsne_class_labels = (
+                [chr(65 + i) for i in range(26)]
+                if st.session_state["mode"] == "letters"
+                else [str(i) for i in range(10)]
+            )
+            st.plotly_chart(
+                plot_tsne(_tsne_coords, _tsne_labels, _tsne_class_labels),
+                use_container_width=True,
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════

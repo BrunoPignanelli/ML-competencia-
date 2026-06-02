@@ -5,12 +5,13 @@ La arquitectura se construye dinámicamente según los hiperparámetros elegidos
 por el usuario: cantidad de capas ocultas y neuronas por capa.
 """
 
-from typing import List, Tuple
+from typing import List, Tuple, TYPE_CHECKING
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from scipy.ndimage import gaussian_filter
 
 # Constantes del problema MNIST
 INPUT_SIZE: int = 784   # 28×28 píxeles aplanados
@@ -124,6 +125,58 @@ class NeuralNet(nn.Module):
             logits = self.output_layer(h)
             acts.append(logits.squeeze(0).cpu().numpy())
             return logits, acts
+
+    def compute_saliency(self, x: torch.Tensor, target_class: int) -> np.ndarray:
+        """
+        Calcula el mapa de saliencia: magnitud del gradiente del logit objetivo respecto al input.
+
+        Muestra qué píxeles influyeron más en la predicción de `target_class`.
+        Retorna un array (28,28) normalizado a [0,1].
+        """
+        self.eval()
+        # Clone and detach to avoid modifying the original; requires_grad for backprop
+        inp = x.clone().detach().requires_grad_(True)
+        output = self.forward(inp)
+        self.zero_grad()
+        output[0, target_class].backward()        # backprop only through the target logit
+        saliency = inp.grad.data.abs().squeeze()  # abs: direction irrelevant, magnitude = importance
+        sal_np = saliency.cpu().numpy()
+        # Gaussian smoothing reduces pixel-level noise, making the heatmap visually cleaner
+        sal_np = gaussian_filter(sal_np, sigma=1.0)
+        # Normalize to [0,1] for display; +1e-8 avoids division by zero on blank canvas
+        sal_np = (sal_np - sal_np.min()) / (sal_np.max() - sal_np.min() + 1e-8)
+        return sal_np
+
+    @torch.no_grad()
+    def extract_embeddings(
+        self, loader: "torch.utils.data.DataLoader", n_samples: int = 1000
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Extrae activaciones de la última capa oculta para n_samples imágenes.
+
+        Retorna (embeddings, labels) donde embeddings tiene shape (n, last_hidden_size).
+        Usado para visualización t-SNE.
+        """
+        self.eval()
+        device = next(self.parameters()).device
+        all_embeds: List[np.ndarray] = []
+        all_labels: List[np.ndarray] = []
+        collected = 0
+
+        for images, labels in loader:
+            if collected >= n_samples:
+                break
+            images = images.to(device)
+            x = images.view(images.size(0), -1)
+            for layer, dropout in zip(self.hidden, self.dropouts):
+                x = F.relu(layer(x))
+            all_embeds.append(x.cpu().numpy())
+            all_labels.append(labels.numpy())
+            collected += images.size(0)
+
+        embeddings = np.concatenate(all_embeds)[:n_samples]
+        labels_arr = np.concatenate(all_labels)[:n_samples]
+        return embeddings, labels_arr
 
     def count_parameters(self) -> int:
         """Cuenta el total de parámetros entrenables del modelo."""

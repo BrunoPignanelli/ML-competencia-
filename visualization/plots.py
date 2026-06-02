@@ -600,3 +600,189 @@ def plot_network_architecture(
         ),
     )
     return fig
+
+
+# ─────────────────────────────────────────────
+# Saliency map
+# ─────────────────────────────────────────────
+
+def plot_confusion_matrix(
+    cm: "np.ndarray",
+    class_labels: list,
+) -> go.Figure:
+    """
+    Matriz de confusión interactiva normalizada por fila (recall por clase).
+
+    cm : ndarray (n, n) con valores en [0, 1] — fila = real, columna = predicho.
+    class_labels : lista de etiquetas de clase ("0"–"9" o "A"–"Z").
+    """
+    n = len(class_labels)
+    pct_text = [[f"{cm[r, c]*100:.1f}%" for c in range(n)] for r in range(n)]
+
+    fig = go.Figure(go.Heatmap(
+        z=cm,
+        x=class_labels,
+        y=class_labels,
+        text=pct_text,
+        texttemplate="%{text}",
+        textfont=dict(size=max(6, 11 - n // 5)),  # smaller font for 26 classes
+        colorscale=[
+            [0.0,  "#0f1117"],   # dark background = 0%
+            [0.15, "#1a3a2a"],
+            [0.4,  "#1e7a45"],
+            [0.7,  "#27ae60"],
+            [1.0,  "#2ECC71"],   # bright green = 100%
+        ],
+        zmin=0, zmax=1,
+        hovertemplate=(
+            "<b>Real: %{y}</b><br>"
+            "Predicho: %{x}<br>"
+            "Porcentaje: %{text}<extra></extra>"
+        ),
+        showscale=True,
+        colorbar=dict(
+            title="Recall",
+            tickformat=".0%",
+            thickness=14,
+            len=0.8,
+        ),
+    ))
+
+    # Highlight diagonal with a thin white border overlay
+    diag_x = [class_labels[i] for i in range(n)]
+    diag_y = [class_labels[i] for i in range(n)]
+    fig.add_trace(go.Scatter(
+        x=diag_x, y=diag_y,
+        mode="markers",
+        marker=dict(symbol="square", size=max(6, 22 - n // 2),
+                    color="rgba(0,0,0,0)", line=dict(color="white", width=1.5)),
+        hoverinfo="skip",
+        showlegend=False,
+    ))
+
+    fig.update_layout(
+        xaxis=dict(title="Predicho", side="bottom", tickfont=dict(size=max(8, 12 - n // 6))),
+        yaxis=dict(title="Real", autorange="reversed",
+                   tickfont=dict(size=max(8, 12 - n // 6))),
+        paper_bgcolor="#0f1117",
+        plot_bgcolor="#0f1117",
+        font=dict(color="white"),
+        margin=dict(l=60, r=20, t=30, b=60),
+        height=max(380, 300 + n * 14),
+    )
+    return fig
+
+
+def plot_saliency_overlay(
+    input_image: np.ndarray,
+    saliency: np.ndarray,
+    class_label: str,
+) -> plt.Figure:
+    """
+    Muestra el dibujo original, el mapa de saliencia y la superposición en 3 paneles.
+
+    Parámetros
+    ----------
+    input_image : ndarray (28,28)
+        Imagen en rango [0,255] tal como la dibujó el usuario.
+    saliency : ndarray (28,28)
+        Magnitud del gradiente normalizada a [0,1] — de NeuralNet.compute_saliency().
+    class_label : str
+        Etiqueta de la clase predicha ("7", "A", etc.) para el título del overlay.
+    """
+    BG = "#0f1117"
+    fig, axes = plt.subplots(1, 3, figsize=(9, 3.2), facecolor=BG)
+    fig.patch.set_facecolor(BG)
+
+    titles = ["Tu dibujo", "Importancia de píxeles", f"Overlay  →  predijo: {class_label}"]
+    title_colors = ["#aaaaaa", "#aaaaaa", "#2ECC71"]
+
+    # Panel 1 — original drawing
+    axes[0].imshow(input_image, cmap="gray", vmin=0, vmax=255, interpolation="nearest")
+
+    # Panel 2 — saliency heatmap (hot: black→red→yellow→white)
+    axes[1].imshow(saliency, cmap="hot", vmin=0, vmax=1, interpolation="nearest")
+
+    # Panel 3 — overlay: drawing as dark base + saliency as glowing heatmap
+    axes[2].imshow(input_image, cmap="gray", vmin=0, vmax=255, alpha=0.35, interpolation="nearest")
+    axes[2].imshow(saliency, cmap="hot", vmin=0, vmax=1, alpha=0.75, interpolation="nearest")
+
+    for ax, title, color in zip(axes, titles, title_colors):
+        ax.set_title(title, color=color, fontsize=10, fontweight="bold", pad=6)
+        ax.axis("off")
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+    fig.tight_layout(pad=0.8)
+    return fig
+
+
+def plot_tsne(
+    coords: np.ndarray,
+    labels: np.ndarray,
+    class_labels: List[str],
+) -> go.Figure:
+    """
+    Scatter t-SNE interactivo con Plotly, un color por clase.
+
+    coords : ndarray (n, 2)  — coordenadas 2D de t-SNE.
+    labels : ndarray (n,)    — índices de clase (enteros).
+    class_labels : list       — ["0"…"9"] o ["A"…"Z"].
+    """
+    # Paleta: 10 colores para dígitos, 26 para letras (ciclamos si hace falta)
+    PALETTE = [
+        "#2ECC71", "#3498DB", "#E74C3C", "#F39C12", "#9B59B6",
+        "#1ABC9C", "#E67E22", "#2980B9", "#8E44AD", "#27AE60",
+        "#D35400", "#C0392B", "#16A085", "#7F8C8D", "#2C3E50",
+        "#F1C40F", "#95A5A6", "#6C5CE7", "#00B894", "#FD79A8",
+        "#FDCB6E", "#55EFC4", "#74B9FF", "#A29BFE", "#FD7272",
+        "#B2BEC3",
+    ]
+
+    fig = go.Figure()
+
+    n_classes = len(class_labels)
+    for cls_idx in range(n_classes):
+        mask = labels == cls_idx
+        if not mask.any():
+            continue
+        color = PALETTE[cls_idx % len(PALETTE)]
+        fig.add_trace(go.Scatter(
+            x=coords[mask, 0],
+            y=coords[mask, 1],
+            mode="markers",
+            name=class_labels[cls_idx],
+            marker=dict(
+                color=color,
+                size=5,
+                opacity=0.75,
+                line=dict(width=0),
+            ),
+            hovertemplate=f"<b>{class_labels[cls_idx]}</b><extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=dict(
+            text="t-SNE — activaciones de la última capa oculta",
+            font=dict(color="#FAFAFA", size=14),
+            x=0.5,
+        ),
+        xaxis=dict(title="t-SNE 1", showgrid=False, zeroline=False,
+                   tickfont=dict(color="#888"), title_font=dict(color="#888")),
+        yaxis=dict(title="t-SNE 2", showgrid=False, zeroline=False,
+                   tickfont=dict(color="#888"), title_font=dict(color="#888")),
+        paper_bgcolor="#0f1117",
+        plot_bgcolor="#0f1117",
+        font=dict(color="#FAFAFA"),
+        legend=dict(
+            title=dict(text="Clase", font=dict(color="#aaa")),
+            bgcolor="rgba(0,0,0,0.4)",
+            bordercolor="#333",
+            borderwidth=1,
+            font=dict(size=11),
+        ),
+        margin=dict(l=40, r=20, t=50, b=40),
+        height=520,
+    )
+    return fig
+
