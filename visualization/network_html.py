@@ -219,7 +219,8 @@ function showTip(cx,cy) {
     if (DATA.activations) html+=`<br>Valor: ${DATA.activations[0][ni].toFixed(3)}`;
   } else if (li===nL-1) {
     const ip=ni===DATA.predicted;
-    html=`<b style="color:${ip?'#2ecc71':'#ff6080'}">Dígito ${ni}${ip?' ✓':''}</b>`;
+    const lbl=(DATA.classLabels&&DATA.classLabels[ni]!==undefined)?DATA.classLabels[ni]:String(ni);
+    html=`<b style="color:${ip?'#2ecc71':'#ff6080'}">${lbl}${ip?' ✓':''}</b>`;
     if (DATA.probs) html+=`<br>Prob: <b>${(DATA.probs[ni]*100).toFixed(2)}%</b>`;
   } else {
     html=`<b style="color:#99bbdd">Hidden L${li} · N${ni}</b>`;
@@ -386,7 +387,8 @@ function drawOutputLabels(labelProg) {
 
     ctx.textAlign='left';
     ctx.font=ip?'bold 12px monospace':'11px monospace';
-    ctx.fillStyle=c; ctx.fillText(String(ni)+(ip?' ✓':''),x,y+4);
+    const lbl=(DATA.classLabels&&DATA.classLabels[ni]!==undefined)?DATA.classLabels[ni]:String(ni);
+    ctx.fillStyle=c; ctx.fillText(lbl+(ip?' ✓':''),x,y+4);
 
     const bx=x+24;
     ctx.fillStyle='rgba(255,255,255,0.05)';
@@ -620,6 +622,8 @@ def render_network_html(
     predicted_class: Optional[int] = None,
     input_image: Optional[np.ndarray] = None,
     height: int = 530,
+    output_size: int = 10,
+    class_labels: Optional[List[str]] = None,
 ) -> str:
     """
     Genera el HTML del componente animado de arquitectura de red neuronal.
@@ -635,20 +639,27 @@ def render_network_html(
         Un tensor por inter-capa (n_hidden+1). Shape (out, in).
         De net.get_all_weights().
     activations : list de ndarray, opcional
-        De net.forward_with_activations(): [input_784, hidden_1, ..., logits_10].
-    output_probs : ndarray shape (10,), opcional
+        De net.forward_with_activations(): [input_784, hidden_1, ..., logits_n].
+    output_probs : ndarray shape (output_size,), opcional
         Probabilidades softmax para los nodos de salida.
     max_neurons_display : int
         Máximo de nodos a mostrar en capas ocultas.
     predicted_class : int, opcional
-        Índice del dígito predicho (nodo verde con pulsos).
+        Índice de la clase predicha (nodo verde con pulsos).
     input_image : ndarray 28×28, opcional
         En rango [0,255] o [0,1] — se muestra en el recuadro de entrada.
     height : int
         Altura en píxeles del iframe.
+    output_size : int
+        Número de clases de salida (10 para dígitos, 26 para letras).
+    class_labels : List[str], opcional
+        Etiquetas para cada clase de salida. Por defecto ["0"…"9"] o según output_size.
     """
-    all_actual  = [INPUT_ACTUAL] + list(hidden_layers_config) + [OUTPUT_ACTUAL]
-    all_display = [INPUT_DISPLAY] + [min(n, max_neurons_display) for n in hidden_layers_config] + [OUTPUT_ACTUAL]
+    if class_labels is None:
+        class_labels = [str(i) for i in range(output_size)]
+
+    all_actual  = [INPUT_ACTUAL] + list(hidden_layers_config) + [output_size]
+    all_display = [INPUT_DISPLAY] + [min(n, max_neurons_display) for n in hidden_layers_config] + [output_size]
     n_layers    = len(all_actual)
     layer_idx   = [_sample_indices(a, d) for a, d in zip(all_actual, all_display)]
 
@@ -687,14 +698,15 @@ def render_network_html(
         pixel_grid = img.tolist()
 
     data = {
-        "layers":      all_display,
-        "layerActual": all_actual,
-        "layerNames":  layer_names,
-        "weights":     weights_json,
-        "activations": acts_json,
-        "probs":       output_probs.tolist() if output_probs is not None else None,
-        "predicted":   int(predicted_class) if predicted_class is not None else None,
-        "pixelGrid":   pixel_grid,
+        "layers":       all_display,
+        "layerActual":  all_actual,
+        "layerNames":   layer_names,
+        "weights":      weights_json,
+        "activations":  acts_json,
+        "probs":        output_probs.tolist() if output_probs is not None else None,
+        "predicted":    int(predicted_class) if predicted_class is not None else None,
+        "pixelGrid":    pixel_grid,
+        "classLabels":  class_labels,
     }
 
     return (

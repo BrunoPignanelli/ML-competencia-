@@ -10,6 +10,14 @@ Build a fully functional, educational, interactive Python application for traini
 
 ---
 
+## Repository
+
+- **GitHub**: https://github.com/BrunoPignanelli/ML-competencia-
+- **Branches**: `main` (production), `develop` (feature work), `testing` (QA)
+- Always create feature branches off `develop`, merge to `main` via PR.
+
+---
+
 ## Skills
 
 ### SKILL: Architecture Design
@@ -28,25 +36,29 @@ Every file has a single responsibility:
 ```
 mnist-neural-net-edu/
 ├── CLAUDE.md
+├── .gitignore
 ├── requirements.txt
-├── app.py                  # Streamlit entry point
+├── app.py                        # Streamlit entry point only
 ├── model/
 │   ├── __init__.py
-│   └── neural_net.py       # NeuralNet class (configurable)
+│   └── neural_net.py             # NeuralNet class (configurable)
 ├── training/
 │   ├── __init__.py
-│   └── trainer.py          # Training loop, metrics collection
+│   └── trainer.py                # Training loop, metrics collection
 ├── data/
 │   ├── __init__.py
-│   └── loader.py           # MNIST download + DataLoader
+│   └── loader.py                 # MNIST download + DataLoader
 └── visualization/
     ├── __init__.py
-    └── plots.py            # All matplotlib/plotly chart functions
+    ├── plots.py                  # Plotly/matplotlib chart functions
+    └── network_html.py           # HTML/Canvas animated network component
 ```
 
 - Never mix training logic into `app.py`.
 - Never put visualization logic inside the model.
 - `app.py` only calls functions from other modules and manages `st.session_state`.
+- `plots.py` handles static Plotly/matplotlib charts (curves, heatmaps, bars).
+- `network_html.py` handles the animated 60fps Canvas network visualization.
 
 ### SKILL: Streamlit Session State Management
 
@@ -58,9 +70,12 @@ mnist-neural-net-edu/
   - `st.session_state["val_losses"]` — list of per-epoch val loss
   - `st.session_state["val_accs"]` — list of per-epoch val accuracy
   - `st.session_state["trained"]` — bool flag
-  - `st.session_state["last_activations"]` — `List[np.ndarray]` from last prediction (for arch viz)
-  - `st.session_state["last_probs"]` — `np.ndarray` shape (10,) from last prediction
+  - `st.session_state["last_activations"]` — `List[np.ndarray]` from last prediction
+  - `st.session_state["last_probs"]` — `np.ndarray` shape (10,) softmax probs from last prediction
   - `st.session_state["last_pred"]` — `int` predicted class from last prediction
+  - `st.session_state["last_input_image"]` — `np.ndarray` (28×28) raw pixel image shown in the 28×28 preview
+  - `st.session_state["show_result"]` — `bool` gates the animation + result section in tab_draw
+  - `st.session_state["attempt"]` — `int` counter incremented on retry; changing it resets canvas via `key=` trick
 - Never use global variables; always read/write via `st.session_state`.
 - Use `st.rerun()` carefully — only after state mutations that require UI refresh.
 
@@ -118,7 +133,7 @@ Key methods on `NeuralNet` beyond `forward`:
 - `predict_proba(x)` — returns softmax probabilities under `torch.no_grad()`.
 - `get_layer_weights(idx)` / `get_layer_bias(idx)` — cloned tensors for a hidden layer.
 - `get_all_weights()` — returns `List[Tensor]` for all layers in order (hidden layers first, output layer last). Shape per tensor: `(out_neurons, in_neurons)` — same as `nn.Linear.weight`.
-- `forward_with_activations(x)` — single forward pass under `torch.no_grad()` that returns `(logits, activations)` where `activations` is a list: `[input_784, hidden_1_relu, ..., output_logits_10]`. Use this to power the architecture graph after every prediction.
+- `forward_with_activations(x)` — single forward pass under `torch.no_grad()` that returns `(logits, activations)` where `activations` is a list: `[input_784, hidden_1_relu, ..., output_logits_10]`. Use this to power the animated architecture visualization after every prediction.
 - `count_parameters()` / `architecture_summary()` — introspection helpers.
 
 ### SKILL: Weight & Bias Visualization
@@ -133,58 +148,128 @@ Key methods on `NeuralNet` beyond `forward`:
 ### SKILL: Drawing Canvas for Digit Input
 
 - Use `streamlit-drawable-canvas` (`pip install streamlit-drawable-canvas`).
-- Canvas config: `stroke_width=20`, `stroke_color="white"`, `background_color="black"`, `width=280, height=280`.
+- Canvas config: `stroke_width=20`, `stroke_color="#FFFFFF"`, `background_color="#1a1a1a"`, `width=320, height=320`.
 - After drawing, extract `canvas_result.image_data` (RGBA numpy array).
 - Preprocessing pipeline:
-  1. Take channel 0 (R) from RGBA → grayscale 280×280
+  1. Take channel 0 (R) from RGBA → grayscale 320×320
   2. Resize to 28×28 using `PIL.Image.LANCZOS`
   3. Normalize: `(pixel/255 - 0.1307) / 0.3081`
-  4. Convert to float32 tensor, add batch dim: `shape = (1, 1, 28, 28)` — but since model expects flat, it will be flattened in forward
-  5. Alternatively: shape `(1, 784)` directly
+  4. Convert to float32 tensor shape `(1, 1, 28, 28)` — flattened in `forward`
 - Run `model.eval()` before inference.
+- Canvas key trick for reset: `key=f"canvas_{st.session_state['attempt']}"` — incrementing `attempt` causes Streamlit to recreate the widget blank.
+
+### SKILL: Predict Flow (Tab 1)
+
+Tab 1 uses a **two-phase state machine** gated by `show_result`:
+
+**FASE 1** (`show_result == False`):
+- Show canvas (320×320) + right column with instructions.
+- "🔮 Predecir" button: disabled while canvas is empty (`img_data[:,:,:3].sum() == 0`).
+- On button press: preprocess image → run inference → store activations/probs/pred/image in `session_state` → set `show_result=True` → `st.rerun()`.
+
+**FASE 2** (`show_result == True`):
+- Render `render_network_html()` via `components.html()` — the network builds itself sequentially.
+- Below: predicted digit (big CSS number) + confidence bar + per-digit probability bars.
+- "🔄 Intentar de nuevo" button: clears all result state, increments `attempt`, sets `show_result=False`, reruns → back to FASE 1 with blank canvas.
+
+```python
+# FASE 1 → FASE 2 transition
+if predict_btn and has_drawing:
+    ...  # inference
+    st.session_state["show_result"] = True
+    st.rerun()
+
+# FASE 2 → FASE 1 transition (retry button)
+if st.button("🔄 Intentar de nuevo"):
+    st.session_state["show_result"] = False
+    st.session_state["attempt"] += 1   # resets canvas key
+    st.rerun()
+```
 
 ### SKILL: Metrics Charts
 
-All chart functions live in `visualization/plots.py`:
+All static chart functions live in `visualization/plots.py`:
 - `plot_loss_curve(train_losses, val_losses)` → Plotly line chart
 - `plot_accuracy_curve(train_accs, val_accs)` → Plotly line chart
 - `plot_weight_heatmap(weight_tensor, layer_idx)` → matplotlib figure
 - `plot_first_layer_receptive_fields(weight_tensor, n_neurons=16)` → grid of 28×28 heatmaps
-- `plot_bias_bars(bias_tensor, layer_idx)` → plotly bar chart
-- `plot_prediction_probabilities(probs, predicted_class)` → plotly bar chart (highlighted)
-- `plot_network_architecture(...)` → Plotly interactive network graph (see SKILL below)
-- All functions return the chart object (figure), not render it — let `app.py` call `st.plotly_chart` or `st.pyplot`.
+- `plot_bias_bars(bias_tensor, layer_idx)` → Plotly bar chart
+- `plot_prediction_probabilities(probs, predicted_class)` → Plotly bar chart (highlighted)
+- `plot_network_architecture(...)` → Plotly static network graph (kept for reference; active visualization uses `network_html.py`)
+- All functions return the chart object (figure) — let `app.py` call `st.plotly_chart` or `st.pyplot`.
 
-### SKILL: Interactive Architecture Graph
+### SKILL: Animated HTML Canvas Network (`network_html.py`)
 
-`plot_network_architecture()` in `visualization/plots.py` renders a fully dynamic Plotly network graph.
+`render_network_html()` in `visualization/network_html.py` generates a self-contained HTML string that embeds a 60fps Canvas 2D animation via `components.html()`.
 
-Signature:
+**Signature:**
 ```python
-def plot_network_architecture(
+def render_network_html(
     hidden_layers_config: List[int],
-    weights_list: Optional[List[torch.Tensor]] = None,   # from net.get_all_weights()
-    activations: Optional[List[np.ndarray]] = None,      # from net.forward_with_activations()
-    output_probs: Optional[np.ndarray] = None,           # shape (10,), softmax probs
+    weights_list: Optional[List[torch.Tensor]] = None,
+    activations: Optional[List[np.ndarray]] = None,
+    output_probs: Optional[np.ndarray] = None,
     max_neurons_display: int = 12,
     predicted_class: Optional[int] = None,
-) -> go.Figure:
+    input_image: Optional[np.ndarray] = None,   # (28,28) raw pixel array
+    height: int = 530,
+) -> str:
 ```
 
-Key design decisions:
-- **Input layer**: always displays 10 representative nodes (sampled evenly from 784) plus a white rectangle representing the raw pixel grid. Lines fan out from the box to the 10 nodes.
-- **Hidden layers**: shows `min(n_neurons, max_neurons_display)` nodes; shows `···` annotation when truncated.
-- **Output layer**: always shows all 10 nodes. When `output_probs` is set, digit label + percentage appears to the right of each node.
-- **Edges**: grouped into 4 opacity/width buckets by normalized weight magnitude (±0.4 threshold). Uses the **NaN-separator trick** — all edges of the same bucket are a single `go.Scatter` trace for efficiency, not one trace per edge.
-  - Strong positive (|w| ≥ 0.4): blue, opacity 0.85, width 2.0
-  - Weak positive (0 ≤ |w| < 0.4): blue, opacity 0.30, width 1.0
-  - Weak negative: orange, opacity 0.30, width 1.0
-  - Strong negative (|w| ≥ 0.4): orange, opacity 0.85, width 2.0
-  - No weights available: neutral gray, opacity 0.18, width 0.8
-- **Node brightness**: opacity encoded as `rgba()` color strings (per-node, not per-trace). `_activation_opacities()` normalizes activations to [0.20, 1.0]. For output nodes, uses `output_probs` instead of raw logits.
-- **Predicted class**: output node color changes to `#2ECC71` (green).
-- **Legend**: uses `x=[None], y=[None]` invisible data traces so Plotly's built-in horizontal legend box renders correctly without polluting the plot area.
-- **Pre-training preview**: when `weights_list=None`, neutral gray connections are drawn from the sidebar's current `hidden_layers` config — users see the structure before training.
+**How it works:**
+- Python serializes all network data as JSON and embeds it in the HTML string via `__DATA__` placeholder replacement.
+- The HTML contains a `<canvas>` element and a vanilla JS animation loop running at 60fps using `requestAnimationFrame`.
+- On each Predict press, Streamlit rerenders `components.html()` with fresh data → JS always starts from frame 0 (automatic reset).
+
+**Sequential Build Animation (phase-based state machine):**
+
+| JS Constant | Value | Purpose |
+|-------------|-------|---------|
+| `T_BG` | 30 ticks | Background/grid/labels fade in |
+| `T_LAYER` | 38 ticks | Node pop-in duration per layer |
+| `T_EDGES` | 52 ticks | Edge draw duration per layer pair |
+
+- `layerStart[li]` — tick at which layer `li` nodes start appearing (computed dynamically).
+- `edgeStart[li]` — tick at which edges between layer `li` and `li+1` start drawing.
+- `PULSE_START` — tick at which predicted output node begins 3× green pulse rings.
+- `REVEAL_TOTAL` — tick at which full interactive mode begins.
+- `revealTick` increments every frame. `REVEALED` flips to `true` when complete.
+
+**JS helper functions:**
+- `easeOut(t)` = `1 - (1-t)^3` — smooth deceleration for edge drawing.
+- `easeOutBack(t)` — spring overshoot for node pop-in.
+- `drawEdgesForPair(li, edgeProg, fullAlpha)` — draws edges at partial length (`edgeProg * full_length`).
+- `drawNodesForLayer(li, nodeProg, burstProg)` — spring pop-in radius, burst ring on first appearance.
+- `drawBurst(x, y, col, burstProg)` — expanding + fading ring.
+- `drawPredictedPulse()` — 3 green expanding rings at predicted output node.
+- `buildParticles()` — called only when `REVEALED=true`; particles flow along weighted edges.
+
+**Visual features (post-reveal interactive mode):**
+- Dark background (`#0f1117`) with subtle grid.
+- Nodes glow with brightness proportional to activation magnitude.
+- Edges color-coded: blue = positive weight, orange = negative weight; width ∝ magnitude.
+- Animated particles flow left→right along edges, colored by weight sign.
+- Hover tooltips on nodes: shows activation value, ReLU state, layer name.
+- Predicted output node pulses green and stays highlighted.
+
+**How to call in `app.py`:**
+```python
+html_str = render_network_html(
+    hidden_layers_config=net.hidden_layers_config,
+    weights_list=net.get_all_weights(),
+    activations=st.session_state.get("last_activations"),
+    output_probs=probs,
+    max_neurons_display=12,
+    predicted_class=pred,
+    input_image=st.session_state.get("last_input_image"),
+    height=530,
+)
+components.html(html_str, height=535, scrolling=False)
+```
+
+### SKILL: Interactive Architecture Graph (Plotly, legacy)
+
+`plot_network_architecture()` in `visualization/plots.py` renders a static Plotly network graph. Still in codebase for reference; the primary visualization is the HTML Canvas version.
 
 Color palette constants (defined at module level in `plots.py`):
 ```python
@@ -198,37 +283,19 @@ _C_NEG    = "#E8923A"   # negative weight
 
 Helper `_hex_to_rgba(hex_color, alpha)` converts hex + float alpha to `"rgba(r,g,b,a)"` for per-node color encoding.
 
-How to wire it up in `app.py`:
-```python
-# In prediction block, after probs:
-_, acts = net.forward_with_activations(tensor)
-st.session_state["last_activations"] = acts
-st.session_state["last_probs"] = probs
-st.session_state["last_pred"] = pred
-
-# In architecture tab:
-fig = plot_network_architecture(
-    hidden_layers_config=net.hidden_layers_config,
-    weights_list=net.get_all_weights(),
-    activations=st.session_state["last_activations"],
-    output_probs=st.session_state["last_probs"],
-    predicted_class=st.session_state["last_pred"],
-)
-st.plotly_chart(fig, use_container_width=True)
-```
+NaN-separator trick: all edges of the same weight bucket are a single `go.Scatter` trace, segments separated by `None`, for efficient rendering.
 
 ### SKILL: UI Layout
 
 Streamlit layout structure in `app.py`:
 ```
 Sidebar: hyperparameter sliders + Train button + status badge
-Tabs: ["✏️ Dibujá y predecí", "📈 Curvas de entrenamiento", "🔬 Pesos del modelo", "🧠 Arquitectura"]
+Tabs: ["✏️ Dibujá y predecí", "📈 Curvas de entrenamiento", "🔬 Pesos del modelo"]
 ```
 - **Sidebar**: n_hidden slider → per-layer neuron sliders (dynamic), lr select_slider, epochs slider, batch_size select_slider, Train button, status badge.
-- **Tab 1 (Draw & Predict)**: `st_canvas` left, prediction output right. Prediction wires activations into `session_state` for the architecture tab.
+- **Tab 1 (Draw & Predict)**: Two-phase flow — FASE 1: canvas + Predict button; FASE 2: animated network + result + retry. The animated network visualization is embedded here (not a separate tab).
 - **Tab 2 (Curves)**: 3 `st.metric` KPIs + loss curve + accuracy curve + expander with explanation.
 - **Tab 3 (Weights)**: receptive field grid (1st layer) + per-layer weight heatmap + bias bar chart.
-- **Tab 4 (Architecture)**: `plot_network_architecture` graph + `max_neurons_display` slider + expander with reading guide.
 
 Use `st.columns` for side-by-side layouts.
 Use `st.expander` for pedagogical explanations.
@@ -263,11 +330,10 @@ streamlit-drawable-canvas>=0.9.3
 
 ### SKILL: Error Handling & UX Guards
 
-- Guard against prediction before training: show `st.warning("Primero entrená el modelo.")`.
-- Guard against drawing prediction on empty canvas: check if `canvas_result.image_data` is not all zeros.
-- Guard against MNIST not loaded: show `st.info("Cargá el dataset primero.")`.
-- Use `st.spinner("Descargando MNIST...")` for the data loading step.
-- Use `st.success` / `st.error` for completion/failure messages.
+- Guard against prediction before training: show `st.info("👈 Entrenà el modelo desde el panel izquierdo para empezar.")` and `st.stop()`.
+- Guard against drawing prediction on empty canvas: disable the Predict button when `img_data[:,:,:3].sum() == 0`.
+- Guard against `streamlit-drawable-canvas` not installed: check `CANVAS_OK` flag and show `st.error`.
+- Use `st.success` / `st.error` for completion/failure messages during training.
 
 ### SKILL: Performance Considerations
 
@@ -276,13 +342,16 @@ streamlit-drawable-canvas>=0.9.3
 - Batch size slider: min=16, max=512, default=64.
 - Training runs **synchronously** in Streamlit (no threads needed) using in-loop placeholder updates.
 - For large epoch counts (>20), consider reducing visualization update frequency (every N epochs).
+- The HTML Canvas animation is self-contained — no Python computation happens during animation. All data is serialized once to JSON at render time.
 
 ### SKILL: Pedagogical Annotations
 
-Each visualization section in the UI must include an `st.expander("¿Qué muestra esta gráfica?")` block explaining:
-- What the metric/visualization represents
-- What to look for (e.g., "si el loss de validación sube mientras el de entrenamiento baja, hay overfitting")
-- How hyperparameters affect it
+Each visualization section in the UI must include an `st.expander` block explaining:
+- What the metric/visualization represents.
+- What to look for (e.g., "si el loss de validación sube mientras el de entrenamiento baja, hay overfitting").
+- How hyperparameters affect it.
+
+The network animation expander explains: node colors, edge colors, particles, glow = activation magnitude, predicted node pulse.
 
 ---
 
@@ -294,10 +363,12 @@ Each visualization section in the UI must include an `st.expander("¿Qué muestr
 | Loss | `CrossEntropyLoss` | Multiclass standard |
 | Optimizer | `Adam` | Forgiving, adaptive |
 | Normalization | mean=0.1307, std=0.3081 | MNIST standard |
-| Charts | Plotly (primary) + matplotlib (weight grids) | Plotly = interactive; matplotlib = pixel grids |
+| Static charts | Plotly (primary) + matplotlib (weight grids) | Plotly = interactive; matplotlib = pixel grids |
+| Network animation | HTML Canvas 2D + vanilla JS (60fps) | Full control over animation, particles, glow effects |
 | Canvas | `streamlit-drawable-canvas` | Best Streamlit-native drawing component |
 | State | `st.session_state` only | No globals |
-| Layout | Tabs | Clean separation of concerns |
+| Layout | 3 tabs | Clean separation; animation lives in Tab 1 |
+| Predict UX | Explicit button + two-phase state machine | Deliberate, cinematic — user controls the moment |
 
 ---
 
@@ -313,24 +384,29 @@ Each visualization section in the UI must include an `st.expander("¿Qué muestr
 - Do NOT create one `go.Scatter` trace per edge in the architecture graph — use the NaN-separator trick (single trace per bucket, segments separated by `None`) to keep trace count low and rendering fast.
 - Do NOT use `forward_with_activations` inside the training loop — it is for inference only and runs under `torch.no_grad()`.
 - Do NOT show raw logits as output node brightness — use `output_probs` (softmax) so values are bounded [0, 1] and visually meaningful.
+- Do NOT set `update_streamlit=True` on the canvas if you want to avoid triggering a rerun on every stroke — currently it is `True` to enable the empty-canvas detection for disabling the Predict button.
+- Do NOT call `buildParticles()` before `REVEALED=true` in the JS animation — particles must only start after the sequential build completes.
+- Do NOT use a separate Architecture tab — the animated network lives inside Tab 1 (Draw & Predict) in FASE 2.
+- Do NOT add right/wrong scoring — if the model predicts wrong, the user simply retrains. Keep the UX simple.
 
 ---
 
 ## Testing the App
 
 Manual checklist before delivering:
-1. Load MNIST → no errors
-2. Configure 2 hidden layers [128, 64], lr=0.001, epochs=5, batch=64
-3. Train → see live loss drop, accuracy rise
-4. Go to **Curvas** tab → loss and accuracy curves render
-5. Go to **Pesos** tab → receptive field grid + weight heatmap + bias bars render
-6. Go to **Predicción** tab → draw a digit → prediction shows class + probability bars
-7. Go to **Arquitectura** tab → graph shows weight-colored connections (blue/orange)
-8. Draw another digit → go back to Arquitectura tab → node brightness updates, predicted output node turns green, probability labels appear on the right
-9. Change to 3 hidden layers, retrain → architecture graph updates to 3 hidden columns
-10. Before training: architecture tab shows gray neutral connections as a structural preview
+1. Train model: sidebar → 2 hidden layers [128, 64], lr=0.001, epochs=5, batch=64 → Train button → live loss/accuracy updates appear.
+2. Go to **Curvas** tab → loss and accuracy curves render with train/val lines.
+3. Go to **Pesos** tab → receptive field grid (16 neurons) + weight heatmap + bias bars render.
+4. Go to **Dibujá y predecí** tab → canvas is blank, "🔮 Predecir" button is disabled.
+5. Draw a digit → Predict button becomes active.
+6. Press Predict → FASE 2: sequential network build animation starts (labels fade in → input nodes pop → edges draw → hidden nodes pop → output lights up with green pulse on predicted digit).
+7. After ~3–4s animation completes: particles flow, hover tooltips work on nodes.
+8. Result section below: big predicted digit + confidence bar + per-digit probability bars.
+9. Press "🔄 Intentar de nuevo" → canvas resets blank, animation disappears, back to FASE 1.
+10. Test with 1 hidden layer and 4 hidden layers → animation phases adjust dynamically.
 
-Architecture graph regression checks:
-- `plot_network_architecture(hidden_layers_config=[128])` must render without weights (neutral gray)
-- `get_all_weights()` must return `n_hidden + 1` tensors; last tensor shape `(10, last_hidden_size)`
-- `forward_with_activations(x)` must return `n_hidden + 2` activation arrays; first shape `(784,)`, last shape `(10,)`
+Regression checks:
+- `get_all_weights()` must return `n_hidden + 1` tensors; last tensor shape `(10, last_hidden_size)`.
+- `forward_with_activations(x)` must return `n_hidden + 2` activation arrays; first shape `(784,)`, last shape `(10,)`.
+- `render_network_html(...)` must return a non-empty string with a `<canvas>` element.
+- Incrementing `attempt` must produce a blank canvas (key change forces widget recreation).
