@@ -38,6 +38,20 @@ except ImportError:
     CANVAS_OK = False
 
 
+# ── Cached data loaders (avoid re-downloading on every train click) ───────────
+
+@st.cache_resource
+def _cached_mnist(batch_size: int):
+    """Download MNIST once and reuse DataLoaders across reruns."""
+    return load_mnist(batch_size=batch_size)
+
+
+@st.cache_resource
+def _cached_emnist(batch_size: int):
+    """Download EMNIST once and reuse DataLoaders across reruns."""
+    return load_emnist_letters(batch_size=batch_size)
+
+
 # ── Sidebar architecture preview ─────────────────────────────────────────────
 
 def _sidebar_preview_svg(hidden_layers: list, output_size: int = 10) -> str:
@@ -407,7 +421,7 @@ with st.sidebar:
             value=0.001,
         )
         epochs = st.slider("Épocas", 1, 20, 5)
-        batch_size = st.select_slider("Batch size", [32, 64, 128, 256], value=64)
+        batch_size = st.select_slider("Batch size", [32, 64, 128, 256], value=256)
 
     # ── Vista previa de arquitectura ──────────────────────────────────────────
     _out_sz = 26 if mode == "letters" else 10
@@ -456,11 +470,11 @@ with st.sidebar:
         if mode == "letters":
             prog = st.progress(0, text="Descargando EMNIST Letters (~50 MB, solo la primera vez)…")
             with st.spinner("Cargando EMNIST Letters…"):
-                train_loader, val_loader, test_loader = load_emnist_letters(batch_size=batch_size)
+                train_loader, val_loader, test_loader = _cached_emnist(batch_size=batch_size)
         else:
             prog = st.progress(0, text="Cargando MNIST…")
             with st.spinner("Cargando MNIST…"):
-                train_loader, val_loader, test_loader = load_mnist(batch_size=batch_size)
+                train_loader, val_loader, test_loader = _cached_mnist(batch_size=batch_size)
 
         if same_arch:
             # Continue from where we left off — Adam optimizer momentum carries over
@@ -794,9 +808,9 @@ t-SNE las comprime a 2D conservando la estructura de vecindad.
                 from sklearn.manifold import TSNE as _TSNE
 
                 if _mode == "letters":
-                    _, _, _tsne_loader1 = load_emnist_letters(batch_size=256)
+                    _, _, _tsne_loader1 = _cached_emnist(batch_size=256)
                 else:
-                    _, _, _tsne_loader1 = load_mnist(batch_size=256)
+                    _, _, _tsne_loader1 = _cached_mnist(batch_size=256)
 
                 _embeds1, _lbls1 = net.extract_embeddings(_tsne_loader1, n_samples=_tsne_n1)
                 _coords1 = _TSNE(
@@ -903,9 +917,9 @@ La computación tarda ~10–20 segundos según la cantidad de muestras.
 
                 # Recrear el loader con batch_size grande para ser eficientes
                 if st.session_state["mode"] == "letters":
-                    _, _, _tsne_loader = load_emnist_letters(batch_size=256)
+                    _, _, _tsne_loader = _cached_emnist(batch_size=256)
                 else:
-                    _, _, _tsne_loader = load_mnist(batch_size=256)
+                    _, _, _tsne_loader = _cached_mnist(batch_size=256)
 
                 _net: NeuralNet = st.session_state[f"model{_sfx2}"]
                 _embeds, _lbls = _net.extract_embeddings(_tsne_loader, n_samples=_tsne_n)
